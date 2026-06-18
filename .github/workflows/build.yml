@@ -21,7 +21,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: bakkesmod-sdk
-          key: bakkesmod-sdk-v4
+          key: bakkesmod-sdk-v5
 
       - name: Download BakkesMod SDK & ImGui Dependencies
         if: steps.cache-sdk.outputs.cache-hit != 'true'
@@ -30,11 +30,12 @@ jobs:
           Expand-Archive sdk.zip -DestinationPath bakkesmod-sdk-raw
           Move-Item bakkesmod-sdk-raw/BakkesModSDK-master bakkesmod-sdk
           
-          # Download and completely extract all core ImGui headers
+          # Clean, guaranteed standalone ImGui structure injection
           Invoke-WebRequest -Uri "https://github.com/ocornut/imgui/archive/refs/tags/v1.84.2.zip" -OutFile imgui.zip
           Expand-Archive imgui.zip -DestinationPath imgui-raw
           New-Item -ItemType Directory -Path "bakkesmod-sdk/include/IMGUI" -Force
           Copy-Item -Path "imgui-raw/imgui-1.84.2/*.h" -Destination "bakkesmod-sdk/include/IMGUI" -Force
+          Copy-Item -Path "imgui-raw/imgui-1.84.2/*.cpp" -Destination "bakkesmod-sdk/include/IMGUI" -Force
         shell: pwsh
 
       - name: Configure CMake
