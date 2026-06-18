@@ -49,15 +49,13 @@ jobs:
         run: cmake --build build --config Release
         shell: pwsh
 
-      - name: Copy DLL to Workspace
-        run: Copy-Item -Path "$env:APPDATA/bakkesmod/bakkesmod/plugins/RLDisasters.dll" -Destination "${{ github.workspace }}/RLDisasters.dll" -Force
-        shell: pwsh
+      # No PowerShell copy step needed!
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: RLDisasters-dll
-          path: ${{ github.workspace }}/RLDisasters.dll
+          path: build/Release/RLDisasters.dll
 
       - name: Attach to release
         if: github.event_name == 'release'
