@@ -45,11 +45,3 @@ if(WIN32)
         NOMINMAX
     )
 endif()
-
-if(DEFINED ENV{APPDATA})
-   set(BM_PLUGINS "$ENV{APPDATA}/bakkesmod/bakkesmod/plugins")
-set_target_properties(RLDisasters PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${BM_PLUGINS}"
-    LIBRARY_OUTPUT_DIRECTORY "${BM_PLUGINS}"
-)
-endif()
