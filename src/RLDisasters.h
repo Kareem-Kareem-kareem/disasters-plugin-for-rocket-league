@@ -3,7 +3,6 @@
 #include "bakkesmod/plugin/pluginwindow.h"
 #include "bakkesmod/plugin/PluginSettingsWindow.h"
 #include <string>
-#include <vector>
 
 struct DisasterState {
     bool closestSpawn      = false;
@@ -20,52 +19,33 @@ public:
     void onLoad() override;
     void onUnload() override;
 
-    // Settings window
     void RenderSettings() override;
     std::string GetPluginName() override { return "RL Disasters"; }
     void SetImGuiContext(uintptr_t ctx) override;
 
 private:
-    // ── Disaster state ──────────────────────────────────────────────
     DisasterState disasters;
 
-    // Goal scale tracking  (1 goal scored = +0.15 scale per team)
-    int  blueGoals  = 0;
-    int  orangeGoals = 0;
-    float baseGoalScale = 1.0f;
+    int   goalsScored    = 0;
+    float goalExtentMult = 1.0f;   // multiplier applied to LocalExtent
+    float fieldScaleMult = 1.0f;   // track for display only
 
-    // Field scale tracking
-    float fieldScaleX = 1.0f;
-    float fieldScaleY = 1.0f;
+    float quickRumbleTimer    = 0.0f;
+    float persistRumbleTimer  = 0.0f;
 
-    // Rumble timers
-    float rumbleItemTimer = 0.0f;   // countdown for quick-rumble
-    bool  rumbleActive    = false;
-
-    // ── Hooks ────────────────────────────────────────────────────────
     void HookEvents();
     void UnhookEvents();
 
-    // Event callbacks
-    void OnMatchStarted(std::string eventName);
-    void OnGoalScored(std::string eventName);
-    void OnTick(std::string eventName);
-    void OnPlayerSpawned(std::string eventName);
+    void OnGoalScored(ServerWrapper server, void* params, std::string eventName);
+    void OnTick(ServerWrapper server, void* params, std::string eventName);
+    void OnSpawn(std::string eventName);
 
-    // ── Disaster helpers ─────────────────────────────────────────────
-    void ApplyClosestSpawn();
-    void ApplyBiggerGoals(int scoringTeam);
-    void ApplyBiggerField();
+    void DoClosestSpawn();
+    void DoGrowGoals();
+    void DoGrowField();
     void TickQuickRumble(float delta);
-    void TickPersistentRumble();
+    void TickPersistRumble(float delta);
 
-    void ResetAll();
-
-    // ── HUD overlay ──────────────────────────────────────────────────
     void RenderHUD(CanvasWrapper canvas);
-
-    // Helpers
-    Vector GetClosestSpawnToOwnGoal(CarWrapper car, ServerWrapper server);
-    void   SetGoalScale(float scale);
-    void   GiveRandomRumbleItem(CarWrapper car);
+    void ResetAll();
 };
