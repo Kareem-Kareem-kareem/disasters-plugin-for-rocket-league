@@ -26,25 +26,37 @@ public:
 private:
     DisasterState disasters;
 
-    int   goalsScored    = 0;
-    float goalExtentMult = 1.0f;   // multiplier applied to LocalExtent
-    float fieldScaleMult = 1.0f;   // track for display only
+    // Fixed tracking variables used in the .cpp file
+    int blueGoals = 0;
+    int orangeGoals = 0;
+    float baseGoalScale = 1.0f;
+    
+    float fieldScaleX = 1.0f;
+    float fieldScaleY = 1.0f;
 
-    float quickRumbleTimer    = 0.0f;
-    float persistRumbleTimer  = 0.0f;
+    float rumbleItemTimer = 0.0f;
+    bool rumbleActive = false;
 
     void HookEvents();
     void UnhookEvents();
 
-    void OnGoalScored(ServerWrapper server, void* params, std::string eventName);
-    void OnTick(ServerWrapper server, void* params, std::string eventName);
-    void OnSpawn(std::string eventName);
+    void OnMatchStarted(std::string eventName);
+    void OnGoalScored(std::string eventName);
+    void OnTick(std::string eventName);
+    void OnPlayerSpawned(std::string eventName);
 
-    void DoClosestSpawn();
-    void DoGrowGoals();
-    void DoGrowField();
+    void ApplyClosestSpawn();
+    Vector GetClosestSpawnToOwnGoal(CarWrapper car, ServerWrapper server);
+    
+    void ApplyBiggerGoals(int scoringTeam);
+    void SetGoalScale(float scale);
+    
+    void ApplyBiggerField();
+    
     void TickQuickRumble(float delta);
-    void TickPersistRumble(float delta);
+    void GiveRandomRumbleItem(CarWrapper car);
+    
+    void TickPersistentRumble();
 
     void RenderHUD(CanvasWrapper canvas);
     void ResetAll();
