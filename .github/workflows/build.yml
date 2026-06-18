@@ -1,0 +1,55 @@
+name: Build RLDisasters Plugin
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ created ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache BakkesMod SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: bakkesmod-sdk
+          key: bakkesmod-sdk-v2
+
+      - name: Download BakkesMod SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/bakkesmodorg/BakkesModSDK/archive/refs/heads/master.zip" -OutFile sdk.zip
+          Expand-Archive sdk.zip -DestinationPath bakkesmod-sdk-raw
+          Move-Item bakkesmod-sdk-raw/BakkesModSDK-master bakkesmod-sdk
+        shell: pwsh
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -S . `
+            -DBAKKESMOD_SDK="${{ github.workspace }}/bakkesmod-sdk" `
+            -DCMAKE_BUILD_TYPE=Release
+        shell: pwsh
+
+      - name: Build
+        run: cmake --build build --config Release
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RLDisasters-dll
+          path: build/Release/RLDisasters.dll
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/Release/RLDisasters.dll
