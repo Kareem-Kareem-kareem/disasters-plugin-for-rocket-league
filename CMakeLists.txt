@@ -4,8 +4,6 @@ project(RLDisasters)
 set(CMAKE_CXX_STANDARD 17)
 
 # ── BakkesMod SDK path ───────────────────────────────────────────────
-# Set BAKKESMOD_SDK to your BakkesMod SDK root, e.g.:
-#   cmake -DBAKKESMOD_SDK="C:/Users/You/bakkesmod/sdk" ..
 if(NOT DEFINED BAKKESMOD_SDK)
     set(BAKKESMOD_SDK "$ENV{BAKKESMOD_SDK}" CACHE PATH "Path to BakkesMod SDK")
 endif()
@@ -22,8 +20,10 @@ add_library(RLDisasters SHARED
     src/RLDisasters.cpp
 )
 
+# This guarantees that whether the file is searched as "imgui.h" or "imgui/imgui.h", it resolves
 target_include_directories(RLDisasters PRIVATE
     ${BAKKESMOD_SDK}/include
+    ${BAKKESMOD_SDK}/include/imgui
     src
 )
 
@@ -32,7 +32,7 @@ target_link_directories(RLDisasters PRIVATE
 )
 
 target_link_libraries(RLDisasters PRIVATE
-    pluginsdk
+    bakkesmod64
 )
 
 # ── Windows DLL settings ─────────────────────────────────────────────
@@ -47,7 +47,7 @@ if(WIN32)
     )
 endif()
 
-# ── Output to BakkesMod plugins folder automatically ─────────────────
+# ── Output paths for local / runner builds ───────────────────────────
 if(DEFINED ENV{APPDATA})
     set(BM_PLUGINS "$ENV{APPDATA}/bakkesmod/bakkesmod/plugins")
     set_target_properties(RLDisasters PROPERTIES
