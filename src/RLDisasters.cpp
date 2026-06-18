@@ -327,7 +327,7 @@ void RLDisasters::TickQuickRumble(float delta)
             auto boostComp = car.GetBoostComponent();
             if (!boostComp.IsNull())
             {
-                boostComp.SetPercentBoost(1.0f);
+                boostComp.SetBoostAmount(1.0f);
             }
         }
     }
@@ -353,7 +353,7 @@ void RLDisasters::TickPersistentRumble()
         auto boostComp = activeCarActor.GetBoostComponent();
         if (!boostComp.IsNull())
         {
-            boostComp.SetPercentBoost(1.0f);
+            boostComp.SetBoostAmount(1.0f);
         }
     }
 }
