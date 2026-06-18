@@ -48,9 +48,9 @@ void RLDisasters::HookEvents()
     gameWrapper->HookEvent("Function TAGame.Ball_TA.Explode",
         [this](std::string e){ OnGoalScored(e); });
 
-    gameWrapper->HookEventWithCaller<CarWrapper>(
-        "Function TAGame.Car_TA.SetVehicleInput",
-        [this](CarWrapper car, void*, std::string e){ OnTick(e); });
+    // FIX: Using a safe string-only hook callback instead of the dangerous HookEventWithCaller layout
+    gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput",
+        [this](std::string e){ OnTick(e); });
 
     gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.InitPlayer",
         [this](std::string e){ OnPlayerSpawned(e); });
@@ -86,7 +86,11 @@ void RLDisasters::OnGoalScored(std::string /*eventName*/)
 void RLDisasters::OnTick(std::string /*eventName*/)
 {
     if (!gameWrapper->IsInGame()) return;
-    // FIX: Using 60 FPS standard physics step delta because GetPhysicsFrameDeltaTime is non-existent
+    
+    // Safety check to ensure a game instance actually exists before updating attributes
+    ServerWrapper server = gameWrapper->GetCurrentGameState();
+    if (!server) return;
+
     float delta = 0.016667f; 
 
     if (disasters.quickRumble)      TickQuickRumble(delta);
