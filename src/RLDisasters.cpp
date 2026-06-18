@@ -328,61 +328,21 @@ void RLDisasters::SetImGuiContext(uintptr_t ctx)
 
 void RLDisasters::RenderSettings()
 {
-    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "RL Disasters — Active Disasters");
+    // 1. Safe, plain text wrapper (no styled colors or wrapped paragraphs)
+    ImGui::Text("RL Disasters Plugin Configuration");
     ImGui::Separator();
-    ImGui::Spacing();
 
-    ImGui::TextWrapped("Toggle each disaster on or off. Changes take effect immediately in-game.");
-    ImGui::Spacing();
+    // 2. Direct boolean access without any layout adjustments or SameLine() placement
+    ImGui::Checkbox("Closest Spawn", &disasters.closestSpawn);
+    ImGui::Checkbox("Bigger Goals", &disasters.biggerGoals);
+    ImGui::Checkbox("Bigger Field", &disasters.biggerField);
+    ImGui::Checkbox("1-sec Rumble", &disasters.quickRumble);
+    ImGui::Checkbox("Persistent Rumble", &disasters.persistentRumble);
 
-    // --- Closest Spawn ---
-    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(0.4f, 1.0f, 0.4f, 1.0f));
-    ImGui::Checkbox("##spawn", &disasters.closestSpawn);
-    ImGui::PopStyleColor();
-    ImGui::SameLine();
-    ImGui::TextDisabled("  Closest Spawn       — Spawn in a straight line toward your own goal");
-    ImGui::Spacing();
-
-    // --- Bigger Goals ---
-    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(1.0f, 0.5f, 0.2f, 1.0f));
-    ImGui::Checkbox("##goals", &disasters.biggerGoals);
-    ImGui::PopStyleColor();
-    ImGui::SameLine();
-    ImGui::TextDisabled("  Bigger Goals         — Goals grow +15% each time someone scores");
-    ImGui::Spacing();
-
-    // --- Bigger Field ---
-    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(0.3f, 0.7f, 1.0f, 1.0f));
-    ImGui::Checkbox("##field", &disasters.biggerField);
-    ImGui::PopStyleColor();
-    ImGui::SameLine();
-    ImGui::TextDisabled("  Bigger Field         — Arena grows +10% each goal (max 3x)");
-    ImGui::Spacing();
-
-    // --- 1-sec Rumble ---
-    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(1.0f, 0.3f, 0.8f, 1.0f));
-    ImGui::Checkbox("##qrumble", &disasters.quickRumble);
-    ImGui::PopStyleColor();
-    ImGui::SameLine();
-    ImGui::TextDisabled("  1-sec Rumble         — Everyone gets a random rumble item every second");
-    ImGui::Spacing();
-
-    // --- Persistent Rumble ---
-    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(1.0f, 0.8f, 0.0f, 1.0f));
-    ImGui::Checkbox("##prumble", &disasters.persistentRumble);
-    ImGui::PopStyleColor();
-    ImGui::SameLine();
-    ImGui::TextDisabled("  Persistent Rumble    — A random rumble pickup is always on the field");
-
-    ImGui::Spacing();
     ImGui::Separator();
-    ImGui::Spacing();
 
-    if (ImGui::Button("Reset All Disasters", ImVec2(180, 30))) {
+    // 3. Simple action button
+    if (ImGui::Button("Reset All Disasters")) {
         ResetAll();
     }
-
-    ImGui::Spacing();
-    ImGui::TextDisabled("Stats: Blue Goals: %d | Orange Goals: %d | Field Scale: %.1fx",
-        blueGoals, orangeGoals, fieldScaleX);
 }
