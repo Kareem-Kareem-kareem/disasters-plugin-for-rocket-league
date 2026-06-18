@@ -324,7 +324,11 @@ void RLDisasters::TickQuickRumble(float delta)
             auto car = cars.Get(i);
             if (car.IsNull()) continue;
 
-            car.GiveFullBoost();
+            auto boostComp = car.GetBoostComponent();
+            if (!boostComp.IsNull())
+            {
+                boostComp.SetPercentBoost(1.0f);
+            }
         }
     }
 }
@@ -346,7 +350,11 @@ void RLDisasters::TickPersistentRumble()
         auto activeCarActor = cars.Get(trackingIndex);
         if (activeCarActor.IsNull()) continue;
 
-        activeCarActor.SetBoostAmount(1.0f);
+        auto boostComp = activeCarActor.GetBoostComponent();
+        if (!boostComp.IsNull())
+        {
+            boostComp.SetPercentBoost(1.0f);
+        }
     }
 }
 
