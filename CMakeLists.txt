@@ -20,8 +20,10 @@ add_library(RLDisasters SHARED
     src/RLDisasters.cpp
 )
 
+# Includes both base root and IMGUI subdirectory to resolve nested dependencies smoothly
 target_include_directories(RLDisasters PRIVATE
     ${BAKKESMOD_SDK}/include
+    ${BAKKESMOD_SDK}/include/IMGUI
     src
 )
 
