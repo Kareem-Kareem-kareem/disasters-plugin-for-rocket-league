@@ -328,51 +328,61 @@ void RLDisasters::SetImGuiContext(uintptr_t ctx)
 
 void RLDisasters::RenderSettings()
 {
-    ImGui::TextColored(ImVec4(1.f, 0.8f, 0.f, 1.f), "RL Disasters — Active Disasters");
+    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "RL Disasters — Active Disasters");
     ImGui::Separator();
     ImGui::Spacing();
 
     ImGui::TextWrapped("Toggle each disaster on or off. Changes take effect immediately in-game.");
     ImGui::Spacing();
 
-    auto DrawToggle = [](const char* label, const char* desc, bool* val, ImVec4 col) {
-        ImGui::PushStyleColor(ImGuiCol_CheckMark, col);
-        ImGui::Checkbox(label, val);
-        ImGui::PopStyleColor();
-        ImGui::SameLine();
-        ImGui::TextDisabled("  %s", desc);
-    };
-
-    DrawToggle("##spawn",    "Closest Spawn       — Spawn in a straight line toward your own goal",
-               &disasters.closestSpawn,     ImVec4(0.4f,1.f,0.4f,1.f));
+    // --- Closest Spawn ---
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(0.4f, 1.0f, 0.4f, 1.0f));
+    ImGui::Checkbox("##spawn", &disasters.closestSpawn);
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    ImGui::TextDisabled("  Closest Spawn       — Spawn in a straight line toward your own goal");
     ImGui::Spacing();
 
-    DrawToggle("##goals",    "Bigger Goals         — Goals grow +15% each time someone scores",
-               &disasters.biggerGoals,      ImVec4(1.f,0.5f,0.2f,1.f));
+    // --- Bigger Goals ---
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(1.0f, 0.5f, 0.2f, 1.0f));
+    ImGui::Checkbox("##goals", &disasters.biggerGoals);
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    ImGui::TextDisabled("  Bigger Goals         — Goals grow +15% each time someone scores");
     ImGui::Spacing();
 
-    DrawToggle("##field",    "Bigger Field         — Arena grows +10% each goal (max 3×)",
-               &disasters.biggerField,      ImVec4(0.3f,0.7f,1.f,1.f));
+    // --- Bigger Field ---
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(0.3f, 0.7f, 1.0f, 1.0f));
+    ImGui::Checkbox("##field", &disasters.biggerField);
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    ImGui::TextDisabled("  Bigger Field         — Arena grows +10% each goal (max 3x)");
     ImGui::Spacing();
 
-    DrawToggle("##qrumble",  "1-sec Rumble         — Everyone gets a random rumble item every second",
-               &disasters.quickRumble,      ImVec4(1.f,0.3f,0.8f,1.f));
+    // --- 1-sec Rumble ---
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(1.0f, 0.3f, 0.8f, 1.0f));
+    ImGui::Checkbox("##qrumble", &disasters.quickRumble);
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    ImGui::TextDisabled("  1-sec Rumble         — Everyone gets a random rumble item every second");
     ImGui::Spacing();
 
-    DrawToggle("##prumble",  "Persistent Rumble    — A random rumble pickup is always on the field",
-               &disasters.persistentRumble, ImVec4(1.f,0.8f,0.f,1.f));
+    // --- Persistent Rumble ---
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(1.0f, 0.8f, 0.0f, 1.0f));
+    ImGui::Checkbox("##prumble", &disasters.persistentRumble);
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    ImGui::TextDisabled("  Persistent Rumble    — A random rumble pickup is always on the field");
 
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
     if (ImGui::Button("Reset All Disasters", ImVec2(180, 30))) {
-        disasters = DisasterState();
         ResetAll();
     }
 
     ImGui::Spacing();
-    ImGui::TextColored(ImVec4(0.5f,0.5f,0.5f,1.f),
-        "Stats: Blue Goals: %d | Orange Goals: %d | Field Scale: %.1fx",
+    ImGui::TextDisabled("Stats: Blue Goals: %d | Orange Goals: %d | Field Scale: %.1fx",
         blueGoals, orangeGoals, fieldScaleX);
 }
