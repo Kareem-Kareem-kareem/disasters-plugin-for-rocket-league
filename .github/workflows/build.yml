@@ -49,8 +49,13 @@ jobs:
         run: cmake --build build --config Release
         shell: pwsh
 
+      - name: Find the DLL location
+        run: |
+          Get-ChildItem -Path . -Filter "RLDisasters.dll" -Recurase -ErrorAction SilentlyContinue | Select-Object FullName
+        shell: pwsh
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: RLDisasters-dll
-          path: build/Release/RLDisasters.dll
+          path: "**/RLDisasters.dll"
