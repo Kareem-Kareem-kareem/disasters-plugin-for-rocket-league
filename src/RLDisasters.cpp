@@ -326,23 +326,6 @@ void RLDisasters::SetImGuiContext(uintptr_t ctx)
     ImGui::SetCurrentContext(reinterpret_cast<ImGuiContext*>(ctx));
 }
 
-void RLDisasters::RenderSettings()
-{
-    // 1. Safe, plain text wrapper (no styled colors or wrapped paragraphs)
-    ImGui::Text("RL Disasters Plugin Configuration");
-    ImGui::Separator();
-
-    // 2. Direct boolean access without any layout adjustments or SameLine() placement
-    ImGui::Checkbox("Closest Spawn", &disasters.closestSpawn);
-    ImGui::Checkbox("Bigger Goals", &disasters.biggerGoals);
-    ImGui::Checkbox("Bigger Field", &disasters.biggerField);
-    ImGui::Checkbox("1-sec Rumble", &disasters.quickRumble);
-    ImGui::Checkbox("Persistent Rumble", &disasters.persistentRumble);
-
-    ImGui::Separator();
-
-    // 3. Simple action button
-    if (ImGui::Button("Reset All Disasters")) {
-        ResetAll();
-    }
-}
+// Remove native ImGui rendering entirely to stop memory conflicts
+void RLDisasters::RenderSettings() {}
+std::string RLDisasters::GetPluginName() { return "RL Disasters"; }
