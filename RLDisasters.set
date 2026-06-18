@@ -1,0 +1,5 @@
+[RLDisasters]
+plugin_name = RL Disasters
+plugin_description = Chaos disasters for Rocket League: closest spawn, bigger goals, bigger field, quick rumble, and persistent rumble. Toggle each from the HUD or F2 settings.
+plugin_version = 1.0.0
+plugin_author = YourName
