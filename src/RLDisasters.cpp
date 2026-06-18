@@ -382,3 +382,8 @@ void RLDisasters::ResetAll()
 void RLDisasters::RenderSettings()
 {
 }
+
+void RLDisasters::SetImGuiContext(uintptr_t ctx)
+{
+    ImGui::SetCurrentContext(reinterpret_cast<ImGuiContext*>(ctx));
+}
