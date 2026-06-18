@@ -53,7 +53,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RLDisasters-dll
-          path: build/Release/RLDisasters.dll
+          path: |
+            **/*.dll
+            !build/**
 
       - name: Attach to release
         if: github.event_name == 'release'
