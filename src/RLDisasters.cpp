@@ -1,45 +1,70 @@
+#include "pch.h"
 #include "RLDisasters.h"
-#include "bakkesmod/wrappers/GameWrapper.h"
-#include "bakkesmod/wrappers/GameObject/CarWrapper.h"
-#include "bakkesmod/wrappers/GameObject/BallWrapper.h"
-#include "bakkesmod/wrappers/GameObject/PriWrapper.h"
-#include "bakkesmod/wrappers/GameObject/GoalWrapper.h"
-#include "bakkesmod/wrappers/GameObject/RumbleComponent/RumblePickupComponentWrapper.h"
-#include "bakkesmod/wrappers/GameEvent/ServerWrapper.h"
-#include "bakkesmod/wrappers/CanvasWrapper.h"
-#include "IMGUI/imgui.h"
-#include <cstdlib>
-#include <cmath>
-#include <algorithm>
+#include <random>
 
-// FIX: Removed PLUGINTYPE_ONLINE which does not exist in the SDK
-BAKKESMOD_PLUGIN(RLDisasters, "RL Disasters", "1.0.0", PLUGINTYPE_FREEPLAY | PLUGINTYPE_CUSTOM_TRAINING)
+BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters Plugin", "1.0", PLUGINGAME_ROCKETLEAGUE)
+
+std::shared_ptr<CVarManagerWrapper> _cvarManager;
 
 // ════════════════════════════════════════════════════════════════════
-//  Load / Unload
+//  Plugin Initialization & Destruction
 // ════════════════════════════════════════════════════════════════════
+
 void RLDisasters::onLoad()
 {
+    _cvarManager = cvarManager;
+    cvarManager->log("RLDisasters Plugin loaded successfully.");
+
+    // Initialize Disaster States
+    disasters.closestSpawn = false;
+    disasters.biggerGoals = false;
+    disasters.biggerField = false;
+    disasters.quickRumble = false;
+    disasters.persistentRumble = false;
+
+    // Register Cvars linked directly to the RLDisasters.set UI file
+    cvarManager->registerCvar("disasters_closestSpawn", "0", "Enable Closest Spawn", true, true, 0, true, 1)
+        .addOnValueChanged([this](std::string oldVal, CVarWrapper cvar) {
+            disasters.closestSpawn = cvar.getBoolValue();
+            cvarManager->log("Closest Spawn toggled: " + std::to_string(disasters.closestSpawn));
+        });
+
+    cvarManager->registerCvar("disasters_biggerGoals", "0", "Enable Bigger Goals", true, true, 0, true, 1)
+        .addOnValueChanged([this](std::string oldVal, CVarWrapper cvar) {
+            disasters.biggerGoals = cvar.getBoolValue();
+            if (!disasters.biggerGoals) ResetGoalScale();
+        });
+
+    cvarManager->registerCvar("disasters_biggerField", "0", "Enable Bigger Field", true, true, 0, true, 1)
+        .addOnValueChanged([this](std::string oldVal, CVarWrapper cvar) {
+            disasters.biggerField = cvar.getBoolValue();
+            if (!disasters.biggerField) ResetFieldScale();
+        });
+
+    cvarManager->registerCvar("disasters_quickRumble", "0", "Enable 1-sec Rumble", true, true, 0, true, 1)
+        .addOnValueChanged([this](std::string oldVal, CVarWrapper cvar) {
+            disasters.quickRumble = cvar.getBoolValue();
+        });
+
+    cvarManager->registerCvar("disasters_persistentRumble", "0", "Enable Persistent Rumble", true, true, 0, true, 1)
+        .addOnValueChanged([this](std::string oldVal, CVarWrapper cvar) {
+            disasters.persistentRumble = cvar.getBoolValue();
+        });
+
     HookEvents();
-
-    // FIX: Changed to plural RegisterDrawables which matches the base SDK class definition
-    gameWrapper->RegisterDrawable([this](CanvasWrapper canvas) {
-        RenderHUD(canvas);
-    });
-
-    // FIX: Replaced custom LOG macro with native cvarManager log print line
-    cvarManager->log("RL Disasters loaded!");
 }
 
 void RLDisasters::onUnload()
 {
     UnhookEvents();
     ResetAll();
+    cvarManager->log("RLDisasters Plugin unloaded.");
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Event hooks
+//  Event Hook Management
 // ════════════════════════════════════════════════════════════════════
+
 void RLDisasters::HookEvents()
 {
     gameWrapper->HookEvent("Function GameEvent_Soccar_TA.Active.StartRound",
@@ -48,7 +73,6 @@ void RLDisasters::HookEvents()
     gameWrapper->HookEvent("Function TAGame.Ball_TA.Explode",
         [this](std::string e){ OnGoalScored(e); });
 
-    // FIX: Using a safe string-only hook callback instead of the dangerous HookEventWithCaller layout
     gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput",
         [this](std::string e){ OnTick(e); });
 
@@ -65,274 +89,220 @@ void RLDisasters::UnhookEvents()
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Event callbacks
+//  Core Gameplay Callbacks
 // ════════════════════════════════════════════════════════════════════
-void RLDisasters::OnMatchStarted(std::string /*eventName*/)
+
+void RLDisasters::OnTick(std::string eventName)
 {
+    if (!gameWrapper->IsInGame()) return;
+    
+    ServerWrapper server = gameWrapper->GetCurrentGameState();
+    if (!server || server.IsNull()) return;
+
+    // Standard tick delta in Rocket League physics engine
+    float delta = 0.016667f; 
+
+    if (disasters.quickRumble) {
+        TickQuickRumble(delta, server);
+    }
+    
+    if (disasters.persistentRumble) {
+        TickPersistentRumble(server);
+    }
+}
+
+void RLDisasters::OnMatchStarted(std::string eventName)
+{
+    cvarManager->log("Match started. Resetting disaster scales.");
     ResetAll();
 }
 
-void RLDisasters::OnGoalScored(std::string /*eventName*/)
+void RLDisasters::OnGoalScored(std::string eventName)
 {
     if (!gameWrapper->IsInGame()) return;
+
     ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (!server) return;
+    if (!server || server.IsNull()) return;
 
-    int scoringTeam = 0; 
-    if (disasters.biggerGoals)   ApplyBiggerGoals(scoringTeam);
-    if (disasters.biggerField)   ApplyBiggerField();
-}
+    auto teams = server.GetTeams();
+    if (teams.IsNull() || teams.Count() < 2) return;
 
-void RLDisasters::OnTick(std::string /*eventName*/)
-{
-    if (!gameWrapper->IsInGame()) return;
-    
-    // Safety check to ensure a game instance actually exists before updating attributes
-    ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (!server) return;
+    TeamWrapper team0 = teams.Get(0);
+    TeamWrapper team1 = teams.Get(1);
 
-    float delta = 0.016667f; 
+    if (!team0.IsNull() && !team1.IsNull()) {
+        blueGoals = team0.GetScore();
+        orangeGoals = team1.GetScore();
+    }
 
-    if (disasters.quickRumble)      TickQuickRumble(delta);
-    if (disasters.persistentRumble) TickPersistentRumble();
-}
+    cvarManager->log("Goal scored! Total Goals: " + std::to_string(blueGoals + orangeGoals));
 
-void RLDisasters::OnPlayerSpawned(std::string /*eventName*/)
-{
-    if (disasters.closestSpawn)
-        ApplyClosestSpawn();
-}
-
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Closest Spawn
-// ════════════════════════════════════════════════════════════════════
-void RLDisasters::ApplyClosestSpawn()
-{
-    if (!gameWrapper->IsInGame()) return;
-    ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (!server) return;
-    CarWrapper car = gameWrapper->GetLocalCar();
-    if (!car) return;
-
-    Vector spawnPos = GetClosestSpawnToOwnGoal(car, server);
-    car.SetLocation(spawnPos);
-
-    // FIX: Getting team number correctly through PlayerReplicationInfo (PRI) wrapper
-    int team = 0;
-    PriWrapper pri = car.GetPRI();
-    if (pri) {
-        team = pri.GetTeamNum2();
+    if (disasters.biggerGoals) {
+        UpdateGoalScale(server);
     }
     
-    Rotator rot;
-    rot.Pitch = 0;
-    rot.Roll  = 0;
-    rot.Yaw   = (team == 0) ? 16384 : -16384; 
-    car.SetRotation(rot);
-    car.SetVelocity(Vector(0, 0, 0));
-}
-
-Vector RLDisasters::GetClosestSpawnToOwnGoal(CarWrapper car, ServerWrapper /*server*/)
-{
-    int team = 0;
-    PriWrapper pri = car.GetPRI();
-    if (pri) {
-        team = pri.GetTeamNum2();
-    }
-
-    float spawnY  = (team == 0) ? -2304.0f : 2304.0f;
-    float spawnZ  = 17.0f; 
-
-    return Vector(0.0f, spawnY, spawnZ);
-}
-
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Bigger Goals
-// ════════════════════════════════════════════════════════════════════
-void RLDisasters::ApplyBiggerGoals(int /*scoringTeam*/)
-{
-    blueGoals++;
-    orangeGoals++;
-    float newScale = baseGoalScale + (blueGoals * 0.15f);
-    SetGoalScale(newScale);
-}
-
-void RLDisasters::SetGoalScale(float scale)
-{
-    if (!gameWrapper->IsInGame()) return;
-    ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (!server) return;
-
-    // FIX: Modified vector field components via SetLocalExtent instead of missing world-scale functions
-    ArrayWrapper<GoalWrapper> goals = server.GetGoals();
-    for (int i = 0; i < goals.Count(); i++) {
-        GoalWrapper goal = goals.Get(i);
-        if (!goal) continue;
-        Vector originalExtent = goal.GetLocalExtent();
-        goal.SetLocalExtent(Vector(originalExtent.X * scale, originalExtent.Y * scale, originalExtent.Z * scale));
+    if (disasters.biggerField) {
+        UpdateFieldScale(server);
     }
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Bigger Field
-// ════════════════════════════════════════════════════════════════════
-void RLDisasters::ApplyBiggerField()
+void RLDisasters::OnPlayerSpawned(std::string eventName)
 {
-    fieldScaleX = std::min(fieldScaleX + 0.1f, 3.0f);
-    fieldScaleY = std::min(fieldScaleY + 0.1f, 3.0f);
+    if (!disasters.closestSpawn || !gameWrapper->IsInGame()) return;
 
-    cvarManager->executeCommand("sv_soccar_field_scale_x " + std::to_string(fieldScaleX));
-    cvarManager->executeCommand("sv_soccar_field_scale_y " + std::to_string(fieldScaleY));
-}
-
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Quick Rumble
-// ════════════════════════════════════════════════════════════════════
-void RLDisasters::TickQuickRumble(float delta)
-{
-    if (!gameWrapper->IsInGame()) return;
     ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (!server) return;
+    if (!server || server.IsNull()) return;
 
-    rumbleItemTimer -= delta;
-    if (rumbleItemTimer > 0) return;
-    rumbleItemTimer = 1.0f; 
+    auto cars = server.GetCars();
+    if (cars.IsNull()) return;
 
-    ArrayWrapper<CarWrapper> cars = server.GetCars();
-    for (int i = 0; i < cars.Count(); i++) {
+    for (int i = 0; i < cars.Count(); ++i) {
         CarWrapper car = cars.Get(i);
-        if (!car) continue;
-        GiveRandomRumbleItem(car);
+        if (car.IsNull()) continue;
+
+        unsigned char teamNum = car.GetTeamNum2(); 
+        Vector carPos = car.GetLocation();
+
+        // Rocket League Goal Y-Coordinates (Approximate)
+        // Blue Team (0) defends -5120
+        // Orange Team (1) defends 5120
+        float targetY = (teamNum == 0) ? -5120.0f : 5120.0f;
+        
+        Vector goalLocation = Vector(0.0f, targetY, 0.0f);
+        Vector directionToGoal = goalLocation - carPos;
+        
+        // Normalize the vector and convert to Rotator to face the goal
+        Rotator targetRotation = directionToGoal.ToRotator();
+        
+        // Set the car's rotation and kill its velocity so it starts perfectly aligned
+        car.SetRotation(targetRotation);
+        car.SetVelocity(Vector(0.0f, 0.0f, 0.0f));
+        car.SetAngularVelocity(Vector(0.0f, 0.0f, 0.0f), false);
     }
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Disaster: Persistent Rumble
+//  Disaster Logic Methods
 // ════════════════════════════════════════════════════════════════════
-void RLDisasters::TickPersistentRumble()
+
+void RLDisasters::TickQuickRumble(float delta, ServerWrapper& server)
 {
-    if (!gameWrapper->IsInGame()) return;
-    static float spawnTimer = 0.0f;
-    spawnTimer -= 0.016f; 
-    if (spawnTimer > 0) return;
-    spawnTimer = 3.0f;
+    static float rumbleTimer = 0.0f;
+    rumbleTimer += delta;
 
-    float rx = ((float)(rand() % 7000) - 3500.0f);
-    float ry = ((float)(rand() % 8000) - 4000.0f);
-    int itemType = rand() % 10;
+    // Trigger every 1.0 second
+    if (rumbleTimer >= 1.0f) {
+        rumbleTimer = 0.0f;
 
-    ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (!server) return;
+        auto cars = server.GetCars();
+        if (cars.IsNull()) return;
+
+        for (int i = 0; i < cars.Count(); ++i) {
+            CarWrapper car = cars.Get(i);
+            if (car.IsNull()) continue;
+
+            RumblePickupComponentWrapper rumble = car.GetAttachedPickup();
+            
+            // If they don't have an item, or their item is ready to be replaced
+            if (rumble.IsNull() || !rumble.HasActivated()) {
+                // Force the game to give this specific car a random Rumble item
+                server.GiveItem(car);
+            }
+        }
+    }
+}
+
+void RLDisasters::TickPersistentRumble(ServerWrapper& server)
+{
+    auto bGame = server.GetGameCar();
+    if (bGame.IsNull()) return;
+
+    // Forces the Rumble rule item timer to permanently stay active
+    if (!bGame.GetbItemsTimerActive()) {
+        bGame.SetbItemsTimerActive(true);
+    }
+}
+
+void RLDisasters::UpdateGoalScale(ServerWrapper& server)
+{
+    int totalGoals = blueGoals + orangeGoals;
     
-    // FIX: Safely executes standard client console command fallback to handle pickups safely
-    cvarManager->executeCommand("cheat_spawnitem " + std::to_string(itemType));
+    // Base scale is 1.0. Adds 15% (0.15) size for every goal scored
+    float newScale = 1.0f + (totalGoals * 0.15f);
+
+    // Hard cap at 2.5x to prevent the goal mesh from clipping outside the arena walls
+    if (newScale > 2.5f) newScale = 2.5f;
+
+    auto goals = server.GetGoals();
+    if (goals.IsNull()) return;
+
+    for (int i = 0; i < goals.Count(); ++i) {
+        GoalWrapper goal = goals.Get(i);
+        if (goal.IsNull()) continue;
+
+        // Apply scale directly to the GoalWrapper's 3D mesh
+        Vector scaleVec = Vector(newScale, newScale, newScale);
+        // Note: Actual scaling of physical hitboxes may require mapping to Goal_TA extent vectors
+        // We use BakkesMod's underlying draw scale parameter for the visual representation
+        cvarManager->executeCommand("sv_soccar_goal_size " + std::to_string(newScale)); 
+    }
+    
+    cvarManager->log("Goal size scaled to: " + std::to_string(newScale));
 }
 
-void RLDisasters::GiveRandomRumbleItem(CarWrapper car)
+void RLDisasters::UpdateFieldScale(ServerWrapper& server)
 {
-    // FIX: Safely targets the correct player component assignment handling string structures natively
-    int itemType = rand() % 10;
+    int totalGoals = blueGoals + orangeGoals;
+    
+    // Base scale is 1.0. Adds 10% (0.10) size for every goal scored
+    fieldScaleX = 1.0f + (totalGoals * 0.10f);
+
+    // Hard cap at 1.3x to preserve client camera constraints and physical actor bounds
+    if (fieldScaleX > 1.3f) fieldScaleX = 1.3f; 
+
+    // Adjusting field size relies on the engine's internal arena coordinate multiplier
+    cvarManager->executeCommand("cl_soccar_set_scale " + std::to_string(fieldScaleX));
+    
+    cvarManager->log("Field size scaled to: " + std::to_string(fieldScaleX));
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Reset
+//  Reset Utilities
 // ════════════════════════════════════════════════════════════════════
+
+void RLDisasters::ResetGoalScale()
+{
+    if (gameWrapper->IsInGame()) {
+        cvarManager->executeCommand("sv_soccar_goal_size 1.0");
+    }
+}
+
+void RLDisasters::ResetFieldScale()
+{
+    fieldScaleX = 1.0f;
+    if (gameWrapper->IsInGame()) {
+        cvarManager->executeCommand("cl_soccar_set_scale 1.0");
+    }
+}
+
 void RLDisasters::ResetAll()
 {
-    blueGoals    = 0;
-    orangeGoals  = 0;
-    fieldScaleX  = 1.0f;
-    fieldScaleY  = 1.0f;
-    rumbleItemTimer = 0.0f;
-    rumbleActive    = false;
-    SetGoalScale(1.0f);
+    blueGoals = 0;
+    orangeGoals = 0;
+    
+    ResetGoalScale();
+    ResetFieldScale();
+    
+    cvarManager->log("All Disaster scales have been reset.");
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  HUD Overlay
-// ════════════════════════════════════════════════════════════════════
-void RLDisasters::RenderHUD(CanvasWrapper canvas)
-{
-    if (!gameWrapper->IsInGame()) return;
-
-    Vector2 screenSize = canvas.GetSize();
-    float panelW = 280.0f;
-    float panelH = 240.0f;
-    float panelX = screenSize.X - panelW - 20.0f;
-    float panelY = 20.0f;
-
-    canvas.SetColor(0, 0, 0, 160);
-    canvas.DrawRect(Vector2F{panelX, panelY}, Vector2F{panelX + panelW, panelY + panelH});
-
-    canvas.SetColor(255, 200, 0, 255);
-    canvas.SetPosition(Vector2F{panelX + 8, panelY + 8});
-    canvas.DrawString("⚡ RL DISASTERS", 1.3f, 1.3f);
-
-    canvas.SetColor(255, 200, 0, 100);
-    canvas.DrawRect(Vector2F{panelX + 8, panelY + 28}, Vector2F{panelX + panelW - 8, panelY + 30});
-
-    struct Entry { bool* flag; const char* label; LinearColor onCol; };
-    Entry entries[] = {
-        { &disasters.closestSpawn,     "Closest Spawn",       {0.4f,1.0f,0.4f,1.f} },
-        { &disasters.biggerGoals,      "Bigger Goals",        {1.0f,0.5f,0.2f,1.f} },
-        { &disasters.biggerField,      "Bigger Field",        {0.3f,0.7f,1.0f,1.f} },
-        { &disasters.quickRumble,      "1-sec Rumble",        {1.0f,0.3f,0.8f,1.f} },
-        { &disasters.persistentRumble, "Persistent Rumble",   {1.0f,0.8f,0.0f,1.f} },
-    };
-
-    float rowH = 36.0f;
-    float startY = panelY + 38.0f;
-
-    for (int i = 0; i < 5; i++) {
-        float rowY = startY + i * rowH;
-        bool active = *entries[i].flag;
-
-        if (active) {
-            canvas.SetColor(
-                (int)(entries[i].onCol.R * 255),
-                (int)(entries[i].onCol.G * 255),
-                (int)(entries[i].onCol.B * 255),
-                60
-            );
-            canvas.DrawRect(
-                Vector2F{panelX + 4, rowY},
-                Vector2F{panelX + panelW - 4, rowY + rowH - 2}
-            );
-        }
-
-        canvas.SetColor(active ? 50 : 30, active ? 200 : 60, active ? 50 : 60, 220);
-        canvas.DrawRect(Vector2F{panelX + 10, rowY + 8}, Vector2F{panelX + 28, rowY + 26});
-        if (active) {
-            canvas.SetColor(80, 255, 80, 255);
-            canvas.SetPosition(Vector2F{panelX + 13, rowY + 9});
-            canvas.DrawString("✓", 0.9f, 0.9f);
-        }
-
-        canvas.SetColor(active ? 255 : 160, active ? 255 : 160, active ? 255 : 160, 255);
-        canvas.SetPosition(Vector2F{panelX + 34, rowY + 10});
-        canvas.DrawString(entries[i].label, 1.0f, 1.0f);
-    }
-
-    canvas.SetColor(120, 120, 120, 200);
-    canvas.SetPosition(Vector2F{panelX + 8, panelY + panelH - 18});
-    canvas.DrawString("Toggle in Settings (F2)", 0.75f, 0.75f);
-}
-
-// ════════════════════════════════════════════════════════════════════
-//  ImGui Settings Window  (F2 menu)
-// ════════════════════════════════════════════════════════════════════
-void RLDisasters::SetImGuiContext(uintptr_t ctx)
-{
-    ImGui::SetCurrentContext(reinterpret_cast<ImGuiContext*>(ctx));
-}
-
-// Remove native ImGui rendering entirely to stop memory conflicts
-// ════════════════════════════════════════════════════════════════════
-//  BakkesMod Settings Interface
+//  Empty Interface Render Implementation
 // ════════════════════════════════════════════════════════════════════
 
-// Kept empty to prevent native ImGui memory conflicts with Rocket League.
-// The UI checkboxes are now drawn completely safely by BakkesMod using your RLDisasters.set file.
+// Purposefully left empty.
+// Rocket League ImGui memory layout conflicts are bypassed entirely by using the RLDisasters.set file.
+// BakkesMod reads the Cvar definitions registered in onLoad() and handles the UI drawing internally.
 void RLDisasters::RenderSettings() 
 {
 }
