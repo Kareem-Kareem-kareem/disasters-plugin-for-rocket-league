@@ -4,7 +4,7 @@
 #include "bakkesmod/wrappers/GameObject/BallWrapper.h"
 #include "bakkesmod/wrappers/GameEvent/ServerWrapper.h"
 #include "bakkesmod/wrappers/CanvasWrapper.h"
-#include "imgui/imgui.h"
+#include "imgui.h"
 #include <cstdlib>
 #include <cmath>
 #include <algorithm>
