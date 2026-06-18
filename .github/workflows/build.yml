@@ -21,7 +21,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: bakkesmod-sdk
-          key: bakkesmod-sdk-v5
+          # Bumping this key to v6 completely wipes the old broken cache
+          key: bakkesmod-sdk-v6
 
       - name: Download BakkesMod SDK & ImGui Dependencies
         if: steps.cache-sdk.outputs.cache-hit != 'true'
@@ -30,7 +31,6 @@ jobs:
           Expand-Archive sdk.zip -DestinationPath bakkesmod-sdk-raw
           Move-Item bakkesmod-sdk-raw/BakkesModSDK-master bakkesmod-sdk
           
-          # Clean, guaranteed standalone ImGui structure injection
           Invoke-WebRequest -Uri "https://github.com/ocornut/imgui/archive/refs/tags/v1.84.2.zip" -OutFile imgui.zip
           Expand-Archive imgui.zip -DestinationPath imgui-raw
           New-Item -ItemType Directory -Path "bakkesmod-sdk/include/IMGUI" -Force
@@ -49,16 +49,8 @@ jobs:
         run: cmake --build build --config Release
         shell: pwsh
 
-      # No PowerShell copy step needed!
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: RLDisasters-dll
           path: build/Release/RLDisasters.dll
-
-      - name: Attach to release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          files: build/Release/RLDisasters.dll
