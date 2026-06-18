@@ -23,7 +23,7 @@ void RLDisasters::onLoad()
     HookEvents();
 
     // FIX: Changed to plural RegisterDrawables which matches the base SDK class definition
-    gameWrapper->RegisterDrawables([this](CanvasWrapper canvas) {
+    gameWrapper->RegisterDrawable([this](CanvasWrapper canvas) {
         RenderHUD(canvas);
     });
 
