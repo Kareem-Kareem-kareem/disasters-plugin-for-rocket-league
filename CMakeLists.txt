@@ -11,8 +11,14 @@ if(NOT EXISTS "${BAKKESMOD_SDK}/include/bakkesmod/plugin/bakkesmodplugin.h")
     message(FATAL_ERROR "BakkesMod SDK not found at '${BAKKESMOD_SDK}'.")
 endif()
 
+# ── Sources ──────────────────────────────────────────────────────────
 add_library(RLDisasters SHARED
     src/RLDisasters.cpp
+    ${BAKKESMOD_SDK}/include/IMGUI/imgui.cpp
+    ${BAKKESMOD_SDK}/include/IMGUI/imgui_draw.cpp
+    ${BAKKESMOD_SDK}/include/IMGUI/imgui_demo.cpp
+    ${BAKKESMOD_SDK}/include/IMGUI/imgui_widgets.cpp
+    ${BAKKESMOD_SDK}/include/IMGUI/imgui_tables.cpp
 )
 
 target_include_directories(RLDisasters PRIVATE
