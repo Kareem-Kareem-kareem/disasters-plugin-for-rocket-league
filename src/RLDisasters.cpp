@@ -327,5 +327,12 @@ void RLDisasters::SetImGuiContext(uintptr_t ctx)
 }
 
 // Remove native ImGui rendering entirely to stop memory conflicts
-void RLDisasters::RenderSettings() {}
-std::string RLDisasters::GetPluginName() { return "RL Disasters"; }
+// ════════════════════════════════════════════════════════════════════
+//  BakkesMod Settings Interface
+// ════════════════════════════════════════════════════════════════════
+
+// Kept empty to prevent native ImGui memory conflicts with Rocket League.
+// The UI checkboxes are now drawn completely safely by BakkesMod using your RLDisasters.set file.
+void RLDisasters::RenderSettings() 
+{
+}
