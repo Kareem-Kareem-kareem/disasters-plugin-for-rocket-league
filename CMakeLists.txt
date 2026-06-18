@@ -20,11 +20,8 @@ add_library(RLDisasters SHARED
     src/RLDisasters.cpp
 )
 
-# This includes the base folder, the nested sub-paths, and local source folder
 target_include_directories(RLDisasters PRIVATE
     ${BAKKESMOD_SDK}/include
-    ${BAKKESMOD_SDK}/include/bakkesmod/imgui
-    ${BAKKESMOD_SDK}/include/IMGUI
     src
 )
 
