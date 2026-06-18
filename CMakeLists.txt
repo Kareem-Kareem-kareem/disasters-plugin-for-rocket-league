@@ -26,7 +26,7 @@ target_link_directories(RLDisasters PRIVATE
 )
 
 target_link_libraries(RLDisasters PRIVATE
-    bakkesmod64
+    pluginsdk
 )
 
 if(WIN32)
