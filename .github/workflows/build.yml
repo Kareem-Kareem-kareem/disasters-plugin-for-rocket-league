@@ -51,7 +51,7 @@ jobs:
 
       - name: Find the DLL location
         run: |
-          Get-ChildItem -Path . -Filter "RLDisasters.dll" -Recurase -ErrorAction SilentlyContinue | Select-Object FullName
+          Get-ChildItem -Path . -Filter "RLDisasters.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object FullName
         shell: pwsh
 
       - name: Upload artifact
