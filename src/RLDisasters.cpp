@@ -263,3 +263,69 @@ void RLDisasters::RenderSettings()
         if (ImGui::BeginTabItem("Rumble Loop & Core Items")) {
             ImGui::Dummy(ImVec2(0.0f, 5.0f));
             ImGui::Checkbox("Activate 1-Second Precision Injection Loop", &config.quickRumbleEnabled);
+            
+            if (config.quickRumbleEnabled) {
+                ImGui::SetNextItemWidth(260.0f);
+                ImGui::SliderFloat("Injection Frequency Step", &config.rumbleInterval, 0.1f, 10.0f, "%.2f Seconds");
+                
+                ImGui::Dummy(ImVec2(0.0f, 5.0f));
+                ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.1f, 1.0f), "Rumble Target Manifest Filter:");
+                ImGui::Separator();
+                
+                ImGui::Columns(2, "ItemMatrixColumns", false);
+                ImGui::Checkbox("Spikes", &config.allowSpikes);
+                ImGui::Checkbox("Plunger", &config.allowPlunger);
+                ImGui::Checkbox("Magnet", &config.allowMagnet);
+                ImGui::Checkbox("Boot", &config.allowBoot);
+                ImGui::Checkbox("Grapple", &config.allowGrapple);
+                
+                ImGui::NextColumn();
+                ImGui::Checkbox("Freeze", &config.allowFreeze);
+                ImGui::Checkbox("Tornado", &config.allowTornado);
+                ImGui::Checkbox("Teleport", &config.allowTeleport);
+                ImGui::Checkbox("Power Hit", &config.allowPowerhit);
+                ImGui::Checkbox("Disruptor", &config.allowDisruptor);
+                ImGui::Columns(1);
+            }
+            
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            ImGui::Separator();
+            ImGui::Checkbox("Forced Infinite Boost Refill Override", &config.infiniteBoost);
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("World Gravity Grid")) {
+            ImGui::Dummy(ImVec2(0.0f, 5.0f));
+            ImGui::Checkbox("Override Map Physics Vector Core", &config.customGravity);
+            
+            if (config.customGravity) {
+                ImGui::SetNextItemWidth(320.0f);
+                ImGui::SliderFloat("Vertical Grid Value", &config.gravityValue, -3000.0f, 3000.0f, "%.1f uu/s²");
+                if (ImGui::Button("Recalibrate Normal Gravity Constant")) {
+                    config.gravityValue = -650.0f;
+                }
+            }
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("System Operations Diagnostics")) {
+            ImGui::Dummy(ImVec2(0.0f, 5.0f));
+            ImGui::Text("Core Engine Log Buffer Output:");
+            
+            ImGui::BeginChild("LogTerminalStream", ImVec2(0, 200), true, ImGuiWindowFlags_HorizontalScrollbar);
+            for (const auto& systemLog : diagnosticLogs) {
+                ImGui::TextUnformatted(systemLog.c_str());
+            }
+            ImGui::SetScrollHereY(1.0f);
+            ImGui::EndChild();
+            
+            if (ImGui::Button("Flush System Buffer Logs")) {
+                diagnosticLogs.clear();
+                AddLog("Diagnostic matrix metrics cleaned from cache.");
+            }
+            ImGui::EndTabItem();
+        }
+
+        ImGui::EndTabBar();
+    }
+}
