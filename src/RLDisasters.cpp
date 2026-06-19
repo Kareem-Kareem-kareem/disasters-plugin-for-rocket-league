@@ -34,6 +34,34 @@ std::string RLDisasters::GetPluginName()
     return "RLDisasters";
 }
 
+std::string RLDisasters::GetMenuName()
+{
+    return "rldisasters";
+}
+
+std::string RLDisasters::GetMenuTitle()
+{
+    return "RL Disasters Control Panel";
+}
+
+bool RLDisasters::ShouldBlockInput()
+{
+    return isWindowOpen;
+}
+
+bool RLDisasters::IsActiveOverlay()
+{
+    return isWindowOpen;
+}
+
+void RLDisasters::Render()
+{
+    if (!isWindowOpen) return;
+    ImGui::Begin("RL Disasters Engine", &isWindowOpen, ImGuiWindowFlags_None);
+    RenderSettings();
+    ImGui::End();
+}
+
 void RLDisasters::SetImGuiContext(uintptr_t ctx)
 {
     ImGui::SetCurrentContext(reinterpret_cast<ImGuiContext*>(ctx));
@@ -100,18 +128,12 @@ void RLDisasters::OnTick(std::string eventName)
         cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(config.gravityValue));
     }
 
-    ArrayWrapper<CarWrapper> cars = server.GetCars();
-    for (int i = 0; i < cars.Count(); ++i) {
-        CarWrapper car = cars.Get(i);
-        if (car.IsNull()) continue;
-
-        PriWrapper pri = car.GetPRI();
-        if (pri.IsNull()) continue;
-
-        if (pri.GetUniqueIdWrapper().GetUID() == gameWrapper->GetUniqueIdValue()) {
-            
+    auto localPlayer = gameWrapper->GetLocalPrimaryPlayer();
+    if (!localPlayer.IsNull()) {
+        auto localCar = localPlayer.GetCar();
+        if (!localCar.IsNull()) {
             if (config.infiniteBoost) {
-                BoostWrapper boost = car.GetBoostComponent();
+                auto boost = localCar.GetBoostComponent();
                 if (!boost.IsNull()) {
                     boost.SetBoostAmount(1.0f);
                 }
@@ -137,22 +159,29 @@ void RLDisasters::OnTick(std::string eventName)
 void RLDisasters::ApplyFieldScale(ServerWrapper& server)
 {
     if (config.fieldScaleMultiplier < 1.0f) config.fieldScaleMultiplier = 1.0f;
-    float scaleFactor = 1.0f / config.fieldScaleMultiplier;
-    Vector scaleVector = Vector{ scaleFactor, scaleFactor, scaleFactor };
-
-    ArrayWrapper<BallWrapper> balls = server.GetBalls();
-    for (int i = 0; i < balls.Count(); ++i) {
-        BallWrapper ball = balls.Get(i);
-        if (!ball.IsNull()) {
-            ball.SetDrawScale3D(scaleVector);
-        }
-    }
+    
+    float inversionScale = 1.0f / config.fieldScaleMultiplier;
+    config.carScaleModifier = inversionScale;
+    Vector carScaleVector = Vector{ config.carScaleModifier, config.carScaleModifier, config.carScaleModifier };
 
     ArrayWrapper<CarWrapper> cars = server.GetCars();
     for (int i = 0; i < cars.Count(); ++i) {
         CarWrapper car = cars.Get(i);
         if (!car.IsNull()) {
-            car.SetDrawScale3D(scaleVector);
+            car.SetDrawScale3D(carScaleVector);
+        }
+    }
+
+    ArrayWrapper<BallWrapper> balls = server.GetGameBalls();
+    for (int i = 0; i < balls.Count(); ++i) {
+        BallWrapper ball = balls.Get(i);
+        if (!ball.IsNull()) {
+            if (config.independentBallScale) {
+                Vector ballScaleVector = Vector{ config.ballScaleModifier, config.ballScaleModifier, config.ballScaleModifier };
+                ball.SetDrawScale3D(ballScaleVector);
+            } else {
+                ball.SetDrawScale3D(Vector{ 1.0f, 1.0f, 1.0f });
+            }
         }
     }
 }
@@ -161,7 +190,7 @@ void RLDisasters::ResetScales(ServerWrapper& server)
 {
     Vector normalVector = Vector{ 1.0f, 1.0f, 1.0f };
 
-    ArrayWrapper<BallWrapper> balls = server.GetBalls();
+    ArrayWrapper<BallWrapper> balls = server.GetGameBalls();
     for (int i = 0; i < balls.Count(); ++i) {
         BallWrapper ball = balls.Get(i);
         if (!ball.IsNull() && ball.GetDrawScale3D().X != 1.0f) {
@@ -250,12 +279,18 @@ void RLDisasters::RenderSettings()
         
         if (ImGui::BeginTabItem("Stadium Scale Modifiers")) {
             ImGui::Dummy(ImVec2(0.0f, 5.0f));
-            ImGui::Checkbox("Simulate Gigantic Field (Scale Down Players & Ball)", &config.biggerFieldMode);
+            ImGui::Checkbox("Simulate Gigantic Field (Shrink Car Profiles)", &config.biggerFieldMode);
             
             if (config.biggerFieldMode) {
                 ImGui::SetNextItemWidth(260.0f);
                 ImGui::SliderFloat("Relative Stadium Scale", &config.fieldScaleMultiplier, 1.0f, 6.0f, "%.1fx Arena Size");
-                ImGui::TextWrapped("Notice: Dynamically coordinates player, car, and ball meshes downward to expand physical pitch parameters without inducing clipping collisions.");
+                
+                ImGui::Separator();
+                ImGui::Checkbox("Enable Independent Ball Scaling Override", &config.independentBallScale);
+                if (config.independentBallScale) {
+                    ImGui::SetNextItemWidth(260.0f);
+                    ImGui::SliderFloat("Ball Scale Factor", &config.ballScaleModifier, 0.1f, 5.0f, "%.2fx Ball Size");
+                }
             }
             ImGui::EndTabItem();
         }
