@@ -128,28 +128,25 @@ void RLDisasters::OnTick(std::string eventName)
         cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(config.gravityValue));
     }
 
-    auto localPlayer = gameWrapper->GetLocalPrimaryPlayer();
-    if (!localPlayer.IsNull()) {
-        auto localCar = localPlayer.GetCar();
-        if (!localCar.IsNull()) {
-            if (config.infiniteBoost) {
-                auto boost = localCar.GetBoostComponent();
-                if (!boost.IsNull()) {
-                    boost.SetBoostAmount(1.0f);
-                }
+    CarWrapper localCar = gameWrapper->GetLocalCar();
+    if (!localCar.IsNull()) {
+        if (config.infiniteBoost) {
+            BoostWrapper boost = localCar.GetBoostComponent();
+            if (!boost.IsNull()) {
+                boost.SetBoostAmount(1.0f);
             }
+        }
 
-            if (config.quickRumbleEnabled) {
-                cumulativeRumbleTimer += deltaTime;
-                if (cumulativeRumbleTimer >= config.rumbleInterval) {
-                    cumulativeRumbleTimer = 0.0f;
-                    
-                    std::vector<std::string> pool = BuildActiveItemPool();
-                    if (!pool.empty()) {
-                        std::string targetItem = pool[rand() % pool.size()];
-                        cvarManager->executeCommand("giveitem " + targetItem);
-                        AddLog("Rumble loop triggered item: " + targetItem);
-                    }
+        if (config.quickRumbleEnabled) {
+            cumulativeRumbleTimer += deltaTime;
+            if (cumulativeRumbleTimer >= config.rumbleInterval) {
+                cumulativeRumbleTimer = 0.0f;
+                
+                std::vector<std::string> pool = BuildActiveItemPool();
+                if (!pool.empty()) {
+                    std::string targetItem = pool[rand() % pool.size()];
+                    cvarManager->executeCommand("giveitem " + targetItem);
+                    AddLog("Rumble loop triggered item: " + targetItem);
                 }
             }
         }
