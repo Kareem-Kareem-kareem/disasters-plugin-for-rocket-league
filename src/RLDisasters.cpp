@@ -13,7 +13,7 @@ BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters Elite", "2.0", PLUGINTYPE
 void RLDisasters::onLoad()
 {
     lastTickTime = std::chrono::steady_clock::now();
-    AddLog("RLDisasters Engine Initialized successfully.");
+    AddLog("RLDisasters Engine Standalone Window Initialized.");
 
     gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput", [this](std::string e) { 
         OnTick(e); 
@@ -22,6 +22,15 @@ void RLDisasters::onLoad()
     gameWrapper->RegisterDrawable([this](CanvasWrapper canvas) {
         RenderCanvasHUD(canvas);
     });
+
+    cvarManager->registerNotifier("toggle_rldisasters", [this](std::vector<std::string> args) {
+        isWindowOpen = !isWindowOpen;
+        if (isWindowOpen) {
+            OnOpen();
+        } else {
+            OnClose();
+        }
+    }, "Toggles the standalone RLDisasters interface window", CVAR_INTERFACE);
 }
 
 void RLDisasters::onUnload()
@@ -57,9 +66,16 @@ bool RLDisasters::IsActiveOverlay()
 void RLDisasters::Render()
 {
     if (!isWindowOpen) return;
-    ImGui::Begin("RL Disasters Engine", &isWindowOpen, ImGuiWindowFlags_None);
-    RenderSettings();
+
+    ImGui::SetNextWindowSize(ImVec2(520, 450), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("RL Disasters Control Matrix", &isWindowOpen, ImGuiWindowFlags_NoCollapse)) {
+        DrawInterfaceLayout();
+    }
     ImGui::End();
+
+    if (!isWindowOpen) {
+        OnClose();
+    }
 }
 
 void RLDisasters::SetImGuiContext(uintptr_t ctx)
@@ -251,7 +267,7 @@ void RLDisasters::RenderCanvasHUD(CanvasWrapper canvas)
     canvas.DrawString(gs.str(), 1.0f, 1.0f);
 }
 
-void RLDisasters::RenderSettings()
+void RLDisasters::DrawInterfaceLayout()
 {
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
     ImGui::Text("ROCKET LEAGUE DISASTERS CORE ENGINE PLATFORM");
@@ -294,7 +310,7 @@ void RLDisasters::RenderSettings()
 
         if (ImGui::BeginTabItem("Rumble Loop & Core Items")) {
             ImGui::Dummy(ImVec2(0.0f, 5.0f));
-            ImGui::Checkbox("Activate 1-Second Precision Injection Loop", &config.quickRumbleEnabled);
+            ImGui::Checkbox("Activate Precision Injection Loop", &config.quickRumbleEnabled);
             
             if (config.quickRumbleEnabled) {
                 ImGui::SetNextItemWidth(260.0f);
@@ -344,7 +360,7 @@ void RLDisasters::RenderSettings()
             ImGui::Dummy(ImVec2(0.0f, 5.0f));
             ImGui::Text("Core Engine Log Buffer Output:");
             
-            ImGui::BeginChild("LogTerminalStream", ImVec2(0, 200), true, ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::BeginChild("LogTerminalStream", ImVec2(0, 180), true, ImGuiWindowFlags_HorizontalScrollbar);
             for (const auto& systemLog : diagnosticLogs) {
                 ImGui::TextUnformatted(systemLog.c_str());
             }
