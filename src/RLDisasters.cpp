@@ -80,6 +80,7 @@ void RLDisasters::SetImGuiContext(uintptr_t ctx)
 
 void RLDisasters::AddLog(const std::string& message)
 {
+    std::lock_guard<std::mutex> lock(logMutex);
     auto now = std::chrono::system_clock::now();
     auto in_time_t = std::chrono::system_clock::to_time_t(now);
     std::stringstream ss;
@@ -136,7 +137,19 @@ void RLDisasters::OnTick(std::string eventName)
     }
 
     if (config.customGravity) {
-        cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(config.gravityValue));
+        if (!lastGravityState || config.gravityValue != lastGravityValue) {
+            lastGravityValue = config.gravityValue;
+            lastGravityState = true;
+            float currentGravity = config.gravityValue;
+            gameWrapper->Execute([this, currentGravity](GameWrapper* gw) {
+                cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(currentGravity));
+            });
+        }
+    } else if (lastGravityState) {
+        lastGravityState = false;
+        gameWrapper->Execute([this](GameWrapper* gw) {
+            cvarManager->executeCommand("sv_soccar_gravity -650");
+        });
     }
 
     CarWrapper localCar = gameWrapper->GetLocalCar();
@@ -156,7 +169,9 @@ void RLDisasters::OnTick(std::string eventName)
                 std::vector<std::string> pool = BuildActiveItemPool();
                 if (!pool.empty()) {
                     std::string targetItem = pool[rand() % pool.size()];
-                    cvarManager->executeCommand("giveitem " + targetItem);
+                    gameWrapper->Execute([this, targetItem](GameWrapper* gw) {
+                        cvarManager->executeCommand("giveitem " + targetItem);
+                    });
                     AddLog("Rumble loop triggered item: " + targetItem);
                 }
             }
@@ -285,7 +300,7 @@ void RLDisasters::DrawInterfaceLayout()
 
     if (ImGui::BeginTabBar("CatastropheModularTabs")) {
         
-        if (ImGui::BeginTabItem("Stadium Scale Modifiers")) {
+            if (ImGui::BeginTabItem("Stadium Scale Modifiers")) {
             ImGui::Dummy(ImVec2(0.0f, 5.0f));
             ImGui::Checkbox("Simulate Gigantic Field (Shrink Car Profiles)", &config.biggerFieldMode);
             
@@ -356,15 +371,19 @@ void RLDisasters::DrawInterfaceLayout()
             ImGui::Text("Core Engine Log Buffer Output:");
             
             ImGui::BeginChild("LogTerminalStream", ImVec2(0, 180), true, ImGuiWindowFlags_HorizontalScrollbar);
-            for (const auto& systemLog : diagnosticLogs) {
-                ImGui::TextUnformatted(systemLog.c_str());
+            {
+                std::lock_guard<std::mutex> lock(logMutex);
+                for (const auto& systemLog : diagnosticLogs) {
+                    ImGui::TextUnformatted(systemLog.c_str());
+                }
             }
             ImGui::SetScrollHereY(1.0f);
             ImGui::EndChild();
             
             if (ImGui::Button("Flush System Buffer Logs")) {
+                std::lock_guard<std::mutex> lock(logMutex);
                 diagnosticLogs.clear();
-                AddLog("Diagnostic matrix metrics cleaned from cache.");
+                diagnosticLogs.push_back("Diagnostic matrix metrics cleaned from cache.");
             }
             ImGui::EndTabItem();
         }
