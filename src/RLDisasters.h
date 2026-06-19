@@ -12,7 +12,7 @@ struct DisasterStates {
     bool persistentRumble;
 };
 
-class RLDisasters : public BakkesModPlugin, public PluginSettingsWindow
+class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginSettingsWindow
 {
 public:
     virtual void onLoad();
@@ -21,8 +21,6 @@ public:
     void HookEvents();
     void UnhookEvents();
     void OnTick(std::string eventName);
-    void OnMatchStarted(std::string eventName);
-    void OnGoalScored(std::string eventName);
     void OnPlayersReset(std::string eventName);
     void ResetAll();
 
