@@ -1,26 +1,34 @@
 #pragma once
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include "bakkesmod/plugin/pluginwindow.h"
-#include <vector>
 #include <string>
+#include <vector>
 #include <chrono>
 
-struct DisasterState {
-    bool enabled = false;
-    bool biggerField = false;
-    bool quickRumble = false;
-    bool persistentRumble = false;
-    bool extremeGravity = false;
-    float gravityMultiplier = 1.0f;
-    float rumbleTimer = 0.0f;
+struct PluginConfig {
+    bool masterEnabled = false;
+    bool biggerFieldMode = false;
+    float fieldScaleMultiplier = 2.0f;
+    bool quickRumbleEnabled = false;
+    float rumbleInterval = 1.0f;
+    bool infiniteBoost = false;
+    bool customGravity = false;
+    float gravityValue = -650.0f;
+    bool showHud = true;
+    bool allowSpikes = true;
+    bool allowPlunger = true;
+    bool allowMagnet = true;
+    bool allowBoot = true;
+    bool allowGrapple = true;
+    bool allowFreeze = true;
+    bool allowTornado = true;
+    bool allowTeleport = true;
+    bool allowPowerhit = true;
+    bool allowDisruptor = true;
 };
 
-class RLDisasters : public BakkesModPlugin, public PluginWindow
+class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginWindow
 {
-private:
-    DisasterState disasters;
-    std::chrono::steady_clock::time_point lastTime;
-
 public:
     void onLoad() override;
     void onUnload() override;
@@ -28,4 +36,21 @@ public:
     void RenderSettings() override;
     std::string GetPluginName() override;
     void SetImGuiContext(uintptr_t ctx) override;
+    void RenderCanvasHUD(CanvasWrapper canvas);
+    bool IsActiveWindow() override;
+    void EnsureActiveWindow() override;
+    void OnOpen() override;
+    void OnClose() override;
+
+private:
+    PluginConfig config;
+    std::chrono::steady_clock::time_point lastTickTime;
+    float cumulativeRumbleTimer = 0.0f;
+    bool isWindowOpen = false;
+    std::vector<std::string> diagnosticLogs;
+    
+    void AddLog(const std::string& message);
+    void ApplyFieldScale(class ServerWrapper& server);
+    void ResetScales(class ServerWrapper& server);
+    std::vector<std::string> BuildActiveItemPool();
 };
