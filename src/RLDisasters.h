@@ -1,7 +1,6 @@
 #pragma once
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include "bakkesmod/plugin/pluginwindow.h"
-#include "bakkesmod/plugin/PluginSettingsWindow.h"
 #include <string>
 #include <vector>
 #include <chrono>
@@ -31,14 +30,12 @@ struct PluginConfig {
     float ballScaleModifier = 1.0f;
 };
 
-class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginWindow, public BakkesMod::Plugin::PluginSettingsWindow
+class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginWindow
 {
 public:
     void onLoad() override;
     void onUnload() override;
     void OnTick(std::string eventName);
-    void RenderSettings() override;
-    std::string GetPluginName() override;
     void SetImGuiContext(uintptr_t ctx) override;
     void RenderCanvasHUD(CanvasWrapper canvas);
     
@@ -63,4 +60,5 @@ private:
     void ApplyFieldScale(class ServerWrapper& server);
     void ResetScales(class ServerWrapper& server);
     std::vector<std::string> BuildActiveItemPool();
+    void DrawInterfaceLayout();
 };
