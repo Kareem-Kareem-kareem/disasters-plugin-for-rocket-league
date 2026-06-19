@@ -1,5 +1,8 @@
-[RLDisasters]
-plugin_name = RL Disasters
-plugin_description = Chaos disasters for Rocket League: closest spawn, bigger goals, bigger field, quick rumble, and persistent rumble. Toggle each from the HUD or F2 settings.
-plugin_version = 1.0.0
-plugin_author = YourName
+RL Disasters Plugin
+9|Choose which match disasters are active:
+8|
+1|Snap Cars to Opponent Goal on Spawn|disasters_closestSpawn
+1|Expanding Goals (+15% per Goal Scored)|disasters_biggerGoals
+1|Expanding Field (+10% per Goal Scored)|disasters_biggerField
+1|Quick Rumble Mode (1s Cooldown + Quick Boost)|disasters_quickRumble
+1|Persistent Boost Override (Infinite 100% Boost)|disasters_persistentRumble
