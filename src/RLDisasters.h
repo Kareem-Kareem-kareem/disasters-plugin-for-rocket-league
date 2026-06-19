@@ -47,8 +47,8 @@ public:
     std::string GetMenuTitle() override;
     bool ShouldBlockInput() override;
     bool IsActiveOverlay() override;
-    bool IsActiveWindow() override;
-    void EnsureActiveWindow() override;
+    bool IsActiveWindow();
+    void EnsureActiveWindow();
     void OnOpen() override;
     void OnClose() override;
 
