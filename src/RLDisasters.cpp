@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <cstdlib>
 
 BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters Plugin", "1.0", 0)
 
@@ -11,11 +12,18 @@ std::shared_ptr<CVarManagerWrapper> _cvarManager;
 
 static int blueGoals = 0;
 static int orangeGoals = 0;
+static int lastTotalGoals = -1;
 static float rumbleItemTimer = 0.0f;
 
-static const std::vector<std::string> RUMBLE_ITEMS = {
-    "spikes", "plunger", "magnet", "boot", "haymaker", 
-    "ballfreeze", "swapper", "tornado", "powershot", "booster"
+static const std::vector<std::string> UNREAL_RUMBLE_CHEATS = {
+    "Cheat_GiveSpikes", 
+    "Cheat_GivePlunger", 
+    "Cheat_GiveMagnet", 
+    "Cheat_GiveBoot", 
+    "Cheat_GivePowerHit", 
+    "Cheat_GiveIce", 
+    "Cheat_GiveSwapper", 
+    "Cheat_GiveTornado"
 };
 static size_t currentRumbleIndex = 0;
 
@@ -84,17 +92,11 @@ void RLDisasters::HookEvents()
         return;
     }
 
-    gameWrapper->HookEvent("Function GameEvent_Soccar_TA.Active.StartRound",
-        [this](std::string e) { OnMatchStarted(e); });
-
-    gameWrapper->HookEvent("Function TAGame.Ball_TA.Explode",
-        [this](std::string e) { OnGoalScored(e); });
+    gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.ResetPlayers",
+        [this](std::string e) { OnPlayersReset(e); });
 
     gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput",
         [this](std::string e) { OnTick(e); });
-
-    gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.InitPlayer",
-        [this](std::string e) { OnPlayerSpawned(e); });
 }
 
 void RLDisasters::UnhookEvents()
@@ -104,10 +106,8 @@ void RLDisasters::UnhookEvents()
         return;
     }
 
-    gameWrapper->UnhookEvent("Function GameEvent_Soccar_TA.Active.StartRound");
-    gameWrapper->UnhookEvent("Function TAGame.Ball_TA.Explode");
+    gameWrapper->UnhookEvent("Function TAGame.GameEvent_Soccar_TA.ResetPlayers");
     gameWrapper->UnhookEvent("Function TAGame.Car_TA.SetVehicleInput");
-    gameWrapper->UnhookEvent("Function TAGame.GameEvent_Soccar_TA.InitPlayer");
 }
 
 void RLDisasters::OnTick(std::string eventName)
@@ -118,17 +118,92 @@ void RLDisasters::OnTick(std::string eventName)
     ServerWrapper server = gameWrapper->GetCurrentGameState();
     if (server.IsNull()) return;
 
+    auto teams = server.GetTeams();
+    int currentTotalGoals = 0;
+    if (!teams.IsNull() && teams.Count() >= 2)
+    {
+        auto blueTeam = teams.Get(0);
+        auto orangeTeam = teams.Get(1);
+        if (!blueTeam.IsNull() && !orangeTeam.IsNull())
+        {
+            blueGoals = blueTeam.GetScore();
+            orangeGoals = orangeTeam.GetScore();
+            currentTotalGoals = blueGoals + orangeGoals;
+        }
+    }
+
+    auto ball = server.GetBall();
+    if (!ball.IsNull())
+    {
+        if (disasters.biggerField)
+        {
+            float targetBallScale = 1.0f + (static_cast<float>(currentTotalGoals) * 0.25f);
+            if (targetBallScale > 3.5f)
+            {
+                targetBallScale = 3.5f;
+            }
+            ball.SetDrawScale3D(Vector{ targetBallScale, targetBallScale, targetBallScale });
+        }
+        else
+        {
+            ball.SetDrawScale3D(Vector{ 1.0f, 1.0f, 1.0f });
+        }
+    }
+
+    if (currentTotalGoals != lastTotalGoals)
+    {
+        lastTotalGoals = currentTotalGoals;
+
+        if (disasters.persistentRumble && !UNREAL_RUMBLE_CHEATS.empty())
+        {
+            currentRumbleIndex = (currentRumbleIndex + 1) % UNREAL_RUMBLE_CHEATS.size();
+        }
+
+        if (disasters.biggerGoals)
+        {
+            auto goals = server.GetGoals();
+            if (!goals.IsNull())
+            {
+                float targetGoalScale = 1.0f + (static_cast<float>(currentTotalGoals) * 0.20f);
+                if (targetGoalScale > 2.5f)
+                {
+                    targetGoalScale = 2.5f;
+                }
+                for (int i = 0; i < goals.Count(); ++i)
+                {
+                    auto goal = goals.Get(i);
+                    if (goal.IsNull()) continue;
+
+                    Vector standardExtent = Vector{ 400.0f, 900.0f, 300.0f };
+                    goal.SetLocalExtent(Vector{ standardExtent.X * targetGoalScale, standardExtent.Y * targetGoalScale, standardExtent.Z * targetGoalScale });
+                }
+            }
+        }
+    }
+
     float frameDelta = 0.016667f;
+    rumbleItemTimer += frameDelta;
 
     if (disasters.persistentRumble)
     {
-        rumbleItemTimer += frameDelta;
         if (rumbleItemTimer >= 1.5f)
         {
             rumbleItemTimer = 0.0f;
-            if (_cvarManager && currentRumbleIndex < RUMBLE_ITEMS.size())
+            if (!UNREAL_RUMBLE_CHEATS.empty())
             {
-                _cvarManager->executeCommand("bms_rumble_give " + RUMBLE_ITEMS[currentRumbleIndex]);
+                gameWrapper->ExecuteUnrealCommand(UNREAL_RUMBLE_CHEATS[currentRumbleIndex]);
+            }
+        }
+    }
+    else if (disasters.quickRumble)
+    {
+        if (rumbleItemTimer >= 1.0f)
+        {
+            rumbleItemTimer = 0.0f;
+            if (!UNREAL_RUMBLE_CHEATS.empty())
+            {
+                int randIndex = std::rand() % UNREAL_RUMBLE_CHEATS.size();
+                gameWrapper->ExecuteUnrealCommand(UNREAL_RUMBLE_CHEATS[randIndex]);
             }
         }
     }
@@ -153,82 +228,10 @@ void RLDisasters::OnTick(std::string eventName)
     }
 }
 
-void RLDisasters::OnMatchStarted(std::string eventName)
-{
-    ResetAll();
-}
-
-void RLDisasters::OnGoalScored(std::string eventName)
-{
-    if (!gameWrapper) return;
-    if (!gameWrapper->IsInGame()) return;
-
-    ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (server.IsNull()) return;
-
-    auto teams = server.GetTeams();
-    if (teams.IsNull() || teams.Count() < 2) return;
-
-    auto blueTeam = teams.Get(0);
-    auto orangeTeam = teams.Get(1);
-
-    if (blueTeam.IsNull() || orangeTeam.IsNull()) return;
-
-    blueGoals = blueTeam.GetScore();
-    orangeGoals = orangeTeam.GetScore();
-
-    int totalGoalsCalculated = blueGoals + orangeGoals;
-
-    if (RUMBLE_ITEMS.size() > 0)
-    {
-        currentRumbleIndex = (currentRumbleIndex + 1) % RUMBLE_ITEMS.size();
-        if (_cvarManager)
-        {
-            _cvarManager->log("RLDisasters: Match goal registered. Shifting assigned active powerup asset to: " + RUMBLE_ITEMS[currentRumbleIndex]);
-        }
-    }
-
-    if (disasters.biggerField)
-    {
-        auto ball = server.GetBall();
-        if (!ball.IsNull())
-        {
-            float targetBallScale = 1.0f + (static_cast<float>(totalGoalsCalculated) * 0.25f);
-            if (targetBallScale > 3.5f)
-            {
-                targetBallScale = 3.5f;
-            }
-            ball.SetDrawScale3D(Vector{ targetBallScale, targetBallScale, targetBallScale });
-        }
-    }
-
-    if (disasters.biggerGoals)
-    {
-        auto goals = server.GetGoals();
-        if (!goals.IsNull())
-        {
-            float targetGoalScale = 1.0f + (static_cast<float>(totalGoalsCalculated) * 0.20f);
-            if (targetGoalScale > 2.5f)
-            {
-                targetGoalScale = 2.5f;
-            }
-            for (int i = 0; i < goals.Count(); ++i)
-            {
-                auto goal = goals.Get(i);
-                if (goal.IsNull()) continue;
-
-                Vector baseExtent = goal.GetLocalExtent();
-                goal.SetLocalExtent(Vector{ baseExtent.X * targetGoalScale, baseExtent.Y * targetGoalScale, baseExtent.Z * targetGoalScale });
-            }
-        }
-    }
-}
-
-void RLDisasters::OnPlayerSpawned(std::string eventName)
+void RLDisasters::OnPlayersReset(std::string eventName)
 {
     if (!disasters.closestSpawn) return;
-    if (!gameWrapper) return;
-    if (!gameWrapper->IsInGame()) return;
+    if (!gameWrapper || !gameWrapper->IsInGame()) return;
 
     ServerWrapper server = gameWrapper->GetCurrentGameState();
     if (server.IsNull()) return;
@@ -236,8 +239,7 @@ void RLDisasters::OnPlayerSpawned(std::string eventName)
     auto cars = server.GetCars();
     if (cars.IsNull()) return;
 
-    int totalActiveCars = cars.Count();
-    for (int index = 0; index < totalActiveCars; ++index)
+    for (int index = 0; index < cars.Count(); ++index)
     {
         auto currentCar = cars.Get(index);
         if (currentCar.IsNull()) continue;
@@ -245,15 +247,7 @@ void RLDisasters::OnPlayerSpawned(std::string eventName)
         unsigned char teamIdentifier = currentCar.GetTeamNum2();
         Vector positionVector = currentCar.GetLocation();
 
-        float structuralTargetY = 0.0f;
-        if (teamIdentifier == 0)
-        {
-            structuralTargetY = -5120.0f;
-        }
-        else
-        {
-            structuralTargetY = 5120.0f;
-        }
+        float structuralTargetY = (teamIdentifier == 0) ? 5120.0f : -5120.0f;
 
         Vector headingTrajectory = Vector(0.0f, structuralTargetY, 0.0f) - positionVector;
         
@@ -276,6 +270,7 @@ void RLDisasters::ResetAll()
 {
     blueGoals = 0;
     orangeGoals = 0;
+    lastTotalGoals = -1;
     rumbleItemTimer = 0.0f;
     currentRumbleIndex = 0;
 
@@ -310,7 +305,7 @@ void RLDisasters::RenderSettings()
     {
         if (_cvarManager) _cvarManager->getCvar("disasters_biggerField").setValue(disasters.biggerField ? 1 : 0);
     }
-    if (ImGui::Checkbox("Quick Boost Injection", &disasters.quickRumble))
+    if (ImGui::Checkbox("Quick Boost & Item Injection", &disasters.quickRumble))
     {
         if (_cvarManager) _cvarManager->getCvar("disasters_quickRumble").setValue(disasters.quickRumble ? 1 : 0);
     }
