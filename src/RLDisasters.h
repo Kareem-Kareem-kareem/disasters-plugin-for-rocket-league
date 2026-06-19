@@ -1,33 +1,31 @@
 #pragma once
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include "bakkesmod/plugin/pluginwindow.h"
-#include "bakkesmod/plugin/PluginSettingsWindow.h"
+#include <vector>
 #include <string>
+#include <chrono>
 
-struct DisasterStates {
-    bool closestSpawn;
-    bool biggerGoals;
-    bool biggerField;
-    bool quickRumble;
-    bool persistentRumble;
+struct DisasterState {
+    bool enabled = false;
+    bool biggerField = false;
+    bool quickRumble = false;
+    bool persistentRumble = false;
+    bool extremeGravity = false;
+    float gravityMultiplier = 1.0f;
+    float rumbleTimer = 0.0f;
 };
 
-class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginSettingsWindow
+class RLDisasters : public BakkesModPlugin, public PluginWindow
 {
-public:
-    virtual void onLoad();
-    virtual void onUnload();
-    
-    void HookEvents();
-    void UnhookEvents();
-    void OnTick(std::string eventName);
-    void OnPlayersReset(std::string eventName);
-    void ResetAll();
-
-    virtual void RenderSettings();
-    virtual std::string GetPluginName() { return "RLDisasters"; }
-    virtual void SetImGuiContext(uintptr_t ctx);
-
 private:
-    DisasterStates disasters;
+    DisasterState disasters;
+    std::chrono::steady_clock::time_point lastTime;
+
+public:
+    void onLoad() override;
+    void onUnload() override;
+    void OnTick(std::string eventName);
+    void RenderSettings() override;
+    std::string GetPluginName() override;
+    void SetImGuiContext(uintptr_t ctx) override;
 };
