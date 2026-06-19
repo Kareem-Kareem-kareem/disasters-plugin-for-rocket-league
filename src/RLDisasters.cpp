@@ -30,17 +30,12 @@ void RLDisasters::onLoad()
         } else {
             OnClose();
         }
-    }, "Toggles the standalone RLDisasters interface window", CVAR_INTERFACE);
+    }, "Toggles the standalone RLDisasters interface window", 0);
 }
 
 void RLDisasters::onUnload()
 {
     cvarManager->executeCommand("sv_soccar_gravity -650");
-}
-
-std::string RLDisasters::GetPluginName()
-{
-    return "RLDisasters";
 }
 
 std::string RLDisasters::GetMenuName()
