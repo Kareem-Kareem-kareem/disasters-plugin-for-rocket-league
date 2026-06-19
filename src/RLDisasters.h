@@ -1,6 +1,7 @@
 #pragma once
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include "bakkesmod/plugin/pluginwindow.h"
+#include "bakkesmod/plugin/PluginSettingsWindow.h"
 #include <string>
 #include <vector>
 #include <chrono>
@@ -25,9 +26,12 @@ struct PluginConfig {
     bool allowTeleport = true;
     bool allowPowerhit = true;
     bool allowDisruptor = true;
+    float carScaleModifier = 0.5f;
+    bool independentBallScale = false;
+    float ballScaleModifier = 1.0f;
 };
 
-class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginWindow
+class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginWindow, public BakkesMod::Plugin::PluginSettingsWindow
 {
 public:
     void onLoad() override;
@@ -37,6 +41,12 @@ public:
     std::string GetPluginName() override;
     void SetImGuiContext(uintptr_t ctx) override;
     void RenderCanvasHUD(CanvasWrapper canvas);
+    
+    void Render() override;
+    std::string GetMenuName() override;
+    std::string GetMenuTitle() override;
+    bool ShouldBlockInput() override;
+    bool IsActiveOverlay() override;
     bool IsActiveWindow() override;
     void EnsureActiveWindow() override;
     void OnOpen() override;
