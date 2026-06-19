@@ -61,8 +61,8 @@ private:
     bool lastGravityState = false;
     
     void AddLog(const std::string& message);
-    void ApplyFieldScale(class ServerWrapper& server);
-    void ResetScales(class ServerWrapper& server);
+    void ApplyFieldScale();
+    void ResetScales();
     std::vector<std::string> BuildActiveItemPool();
     void DrawInterfaceLayout();
 };
