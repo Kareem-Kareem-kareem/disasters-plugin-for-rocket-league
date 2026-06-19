@@ -4,60 +4,32 @@
 #include "bakkesmod/plugin/PluginSettingsWindow.h"
 #include <string>
 
-struct DisasterState {
-    bool closestSpawn      = false;
-    bool biggerGoals       = false;
-    bool biggerField       = false;
-    bool quickRumble       = false;
-    bool persistentRumble  = false;
+struct DisasterStates {
+    bool closestSpawn;
+    bool biggerGoals;
+    bool biggerField;
+    bool quickRumble;
+    bool persistentRumble;
 };
 
-class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin,
-                    public BakkesMod::Plugin::PluginSettingsWindow
+class RLDisasters : public BakkesModPlugin, public PluginSettingsWindow
 {
 public:
-    void onLoad() override;
-    void onUnload() override;
-
-    void RenderSettings() override;
-    std::string GetPluginName() override { return "RL Disasters"; }
-    void SetImGuiContext(uintptr_t ctx) override;
-
-private:
-    DisasterState disasters;
-
-    // Fixed tracking variables used in the .cpp file
-    int blueGoals = 0;
-    int orangeGoals = 0;
-    float baseGoalScale = 1.0f;
+    virtual void onLoad();
+    virtual void onUnload();
     
-    float fieldScaleX = 1.0f;
-    float fieldScaleY = 1.0f;
-
-    float rumbleItemTimer = 0.0f;
-    bool rumbleActive = false;
-
     void HookEvents();
     void UnhookEvents();
-
+    void OnTick(std::string eventName);
     void OnMatchStarted(std::string eventName);
     void OnGoalScored(std::string eventName);
-    void OnTick(std::string eventName);
-    void OnPlayerSpawned(std::string eventName);
-
-    void ApplyClosestSpawn();
-    Vector GetClosestSpawnToOwnGoal(CarWrapper car, ServerWrapper server);
-    
-    void ApplyBiggerGoals(int scoringTeam);
-    void SetGoalScale(float scale);
-    
-    void ApplyBiggerField();
-    
-    void TickQuickRumble(float delta);
-    void GiveRandomRumbleItem(CarWrapper car);
-    
-    void TickPersistentRumble();
-
-    void RenderHUD(CanvasWrapper canvas);
+    void OnPlayersReset(std::string eventName);
     void ResetAll();
+
+    virtual void RenderSettings();
+    virtual std::string GetPluginName() { return "RLDisasters"; }
+    virtual void SetImGuiContext(uintptr_t ctx);
+
+private:
+    DisasterStates disasters;
 };
