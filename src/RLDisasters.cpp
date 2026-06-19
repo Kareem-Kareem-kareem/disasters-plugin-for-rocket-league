@@ -119,68 +119,70 @@ void RLDisasters::OnTick(std::string eventName)
         return;
     }
 
-    ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (server.IsNull()) {
-        return;
-    }
-
     auto currentTime = std::chrono::steady_clock::now();
     float deltaTime = std::chrono::duration<float>(currentTime - lastTickTime).count();
     lastTickTime = currentTime;
 
     if (deltaTime > 0.1f) deltaTime = 0.0166f;
 
-    if (config.biggerFieldMode) {
-        ApplyFieldScale(server);
-    } else {
-        ResetScales(server);
-    }
+    // Defer ALL object mutations (scales, boost amount, etc.) to the main game thread safely
+    gameWrapper->Execute([this, deltaTime](GameWrapper* gw) {
+        if (!gameWrapper->IsInGame()) return;
+        
+        ServerWrapper server = gameWrapper->GetCurrentGameState();
+        if (server.IsNull()) return;
 
-    if (config.customGravity) {
-        if (!lastGravityState || config.gravityValue != lastGravityValue) {
-            lastGravityValue = config.gravityValue;
-            lastGravityState = true;
-            float currentGravity = config.gravityValue;
-            gameWrapper->Execute([this, currentGravity](GameWrapper* gw) {
-                cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(currentGravity));
-            });
+        // Handle Scale modifications
+        if (config.biggerFieldMode) {
+            ApplyFieldScale();
+        } else {
+            ResetScales();
         }
-    } else if (lastGravityState) {
-        lastGravityState = false;
-        gameWrapper->Execute([this](GameWrapper* gw) {
-            cvarManager->executeCommand("sv_soccar_gravity -650");
-        });
-    }
 
-    CarWrapper localCar = gameWrapper->GetLocalCar();
-    if (!localCar.IsNull()) {
-        if (config.infiniteBoost) {
-            BoostWrapper boost = localCar.GetBoostComponent();
-            if (!boost.IsNull()) {
-                boost.SetBoostAmount(1.0f);
+        // Handle Gravity rules
+        if (config.customGravity) {
+            if (!lastGravityState || config.gravityValue != lastGravityValue) {
+                lastGravityValue = config.gravityValue;
+                lastGravityState = true;
+                cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(config.gravityValue));
             }
+        } else if (lastGravityState) {
+            lastGravityState = false;
+            cvarManager->executeCommand("sv_soccar_gravity -650");
         }
 
-        if (config.quickRumbleEnabled) {
-            cumulativeRumbleTimer += deltaTime;
-            if (cumulativeRumbleTimer >= config.rumbleInterval) {
-                cumulativeRumbleTimer = 0.0f;
-                
-                std::vector<std::string> pool = BuildActiveItemPool();
-                if (!pool.empty()) {
-                    std::string targetItem = pool[rand() % pool.size()];
-                    gameWrapper->Execute([this, targetItem](GameWrapper* gw) {
+        // Handle Local player updates
+        CarWrapper localCar = gameWrapper->GetLocalCar();
+        if (!localCar.IsNull()) {
+            if (config.infiniteBoost) {
+                BoostWrapper boost = localCar.GetBoostComponent();
+                if (!boost.IsNull()) {
+                    boost.SetBoostAmount(1.0f);
+                }
+            }
+
+            if (config.quickRumbleEnabled) {
+                cumulativeRumbleTimer += deltaTime;
+                if (cumulativeRumbleTimer >= config.rumbleInterval) {
+                    cumulativeRumbleTimer = 0.0f;
+                    
+                    std::vector<std::string> pool = BuildActiveItemPool();
+                    if (!pool.empty()) {
+                        std::string targetItem = pool[rand() % pool.size()];
                         cvarManager->executeCommand("giveitem " + targetItem);
-                    });
-                    AddLog("Rumble loop triggered item: " + targetItem);
+                        AddLog("Rumble loop triggered item: " + targetItem);
+                    }
                 }
             }
         }
-    }
+    });
 }
 
-void RLDisasters::ApplyFieldScale(ServerWrapper& server)
+void RLDisasters::ApplyFieldScale()
 {
+    ServerWrapper server = gameWrapper->GetCurrentGameState();
+    if (server.IsNull()) return;
+
     if (config.fieldScaleMultiplier < 1.0f) config.fieldScaleMultiplier = 1.0f;
     
     float inversionScale = 1.0f / config.fieldScaleMultiplier;
@@ -209,8 +211,11 @@ void RLDisasters::ApplyFieldScale(ServerWrapper& server)
     }
 }
 
-void RLDisasters::ResetScales(ServerWrapper& server)
+void RLDisasters::ResetScales()
 {
+    ServerWrapper server = gameWrapper->GetCurrentGameState();
+    if (server.IsNull()) return;
+
     Vector normalVector = Vector{ 1.0f, 1.0f, 1.0f };
 
     ArrayWrapper<BallWrapper> balls = server.GetGameBalls();
@@ -300,7 +305,7 @@ void RLDisasters::DrawInterfaceLayout()
 
     if (ImGui::BeginTabBar("CatastropheModularTabs")) {
         
-            if (ImGui::BeginTabItem("Stadium Scale Modifiers")) {
+        if (ImGui::BeginTabItem("Stadium Scale Modifiers")) {
             ImGui::Dummy(ImVec2(0.0f, 5.0f));
             ImGui::Checkbox("Simulate Gigantic Field (Shrink Car Profiles)", &config.biggerFieldMode);
             
