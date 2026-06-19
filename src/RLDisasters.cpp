@@ -1,321 +1,265 @@
 #include "RLDisasters.h"
-#include "imgui.h"
+#include "bakkesmod/wrappers/includes.h"
+#include "bakkesmod/wrappers/GameEvent/ServerWrapper.h"
+#include "bakkesmod/wrappers/GameObject/BallWrapper.h"
+#include "bakkesmod/wrappers/GameObject/CarWrapper.h"
+#include "imgui/imgui.h"
+#include <sstream>
+#include <iomanip>
 #include <cmath>
-#include <string>
-#include <vector>
-#include <memory>
-#include <cstdlib>
 
-BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters Plugin", "1.0", 0)
-
-std::shared_ptr<CVarManagerWrapper> _cvarManager;
-
-static int blueGoals = 0;
-static int orangeGoals = 0;
-static int lastTotalGoals = -1;
-static float rumbleItemTimer = 0.0f;
-
-static const std::vector<std::string> UNREAL_RUMBLE_CHEATS = {
-    "Cheat_GiveSpikes", 
-    "Cheat_GivePlunger", 
-    "Cheat_GiveMagnet", 
-    "Cheat_GiveBoot", 
-    "Cheat_GivePowerHit", 
-    "Cheat_GiveIce", 
-    "Cheat_GiveSwapper", 
-    "Cheat_GiveTornado"
-};
-static size_t currentRumbleIndex = 0;
+BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters Elite", "2.0", PLUGINTYPE_FREEPLAY)
 
 void RLDisasters::onLoad()
 {
-    _cvarManager = cvarManager;
+    lastTickTime = std::chrono::steady_clock::now();
+    AddLog("RLDisasters Engine Initialized successfully.");
 
-    if (!_cvarManager)
-    {
-        return;
-    }
+    gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput", [this](std::string e) { 
+        OnTick(e); 
+    });
 
-    _cvarManager->log("RLDisasters: Beginning full system load sequence.");
-
-    disasters.closestSpawn = false;
-    disasters.biggerGoals = false;
-    disasters.biggerField = false;
-    disasters.quickRumble = false;
-    disasters.persistentRumble = false;
-
-    _cvarManager->registerCvar("disasters_closestSpawn", "0", "Enable Closest Spawn", true, true, 0, true, 1)
-        .addOnValueChanged([this](std::string oldVal, CVarWrapper cvar) {
-            if (cvar.IsNull()) return;
-            disasters.closestSpawn = cvar.getBoolValue();
-        });
-
-    _cvarManager->registerCvar("disasters_biggerGoals", "0", "Enable Bigger Goals", true, true, 0, true, 1)
-        .addOnValueChanged([this](std::string oldVal, CVarWrapper cvar) {
-            if (cvar.IsNull()) return;
-            disasters.biggerGoals = cvar.getBoolValue();
-        });
-
-    _cvarManager->registerCvar("disasters_biggerField", "0", "Enable Bigger Field", true, true, 0, true, 1)
-        .addOnValueChanged([this](std::string oldVal, CVarWrapper cvar) {
-            if (cvar.IsNull()) return;
-            disasters.biggerField = cvar.getBoolValue();
-        });
-
-    _cvarManager->registerCvar("disasters_quickRumble", "0", "Enable 1-sec Rumble", true, true, 0, true, 1)
-        .addOnValueChanged([this](std::string oldVal, CVarWrapper cvar) {
-            if (cvar.IsNull()) return;
-            disasters.quickRumble = cvar.getBoolValue();
-        });
-
-    _cvarManager->registerCvar("disasters_persistentRumble", "0", "Enable Persistent Rumble", true, true, 0, true, 1)
-        .addOnValueChanged([this](std::string oldVal, CVarWrapper cvar) {
-            if (cvar.IsNull()) return;
-            disasters.persistentRumble = cvar.getBoolValue();
-        });
-
-    HookEvents();
-
-    _cvarManager->log("RLDisasters: Initialization sequence successfully finalized.");
+    gameWrapper->RegisterDrawable([this](CanvasWrapper canvas) {
+        RenderCanvasHUD(canvas);
+    });
 }
 
 void RLDisasters::onUnload()
 {
-    UnhookEvents();
-    ResetAll();
+    cvarManager->executeCommand("sv_soccar_gravity -650");
 }
 
-void RLDisasters::HookEvents()
+std::string RLDisasters::GetPluginName()
 {
-    if (!gameWrapper)
-    {
-        return;
-    }
-
-    gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.ResetPlayers",
-        [this](std::string e) { OnPlayersReset(e); });
-
-    gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput",
-        [this](std::string e) { OnTick(e); });
-}
-
-void RLDisasters::UnhookEvents()
-{
-    if (!gameWrapper)
-    {
-        return;
-    }
-
-    gameWrapper->UnhookEvent("Function TAGame.GameEvent_Soccar_TA.ResetPlayers");
-    gameWrapper->UnhookEvent("Function TAGame.Car_TA.SetVehicleInput");
-}
-
-void RLDisasters::OnTick(std::string eventName)
-{
-    if (!gameWrapper) return;
-    if (!gameWrapper->IsInGame()) return;
-
-    ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (server.IsNull()) return;
-
-    auto teams = server.GetTeams();
-    int currentTotalGoals = 0;
-    if (!teams.IsNull() && teams.Count() >= 2)
-    {
-        auto blueTeam = teams.Get(0);
-        auto orangeTeam = teams.Get(1);
-        if (!blueTeam.IsNull() && !orangeTeam.IsNull())
-        {
-            blueGoals = blueTeam.GetScore();
-            orangeGoals = orangeTeam.GetScore();
-            currentTotalGoals = blueGoals + orangeGoals;
-        }
-    }
-
-    auto ball = server.GetBall();
-    if (!ball.IsNull())
-    {
-        if (disasters.biggerField)
-        {
-            float targetBallScale = 1.0f + (static_cast<float>(currentTotalGoals) * 0.25f);
-            if (targetBallScale > 3.5f)
-            {
-                targetBallScale = 3.5f;
-            }
-            ball.SetDrawScale3D(Vector{ targetBallScale, targetBallScale, targetBallScale });
-        }
-        else
-        {
-            ball.SetDrawScale3D(Vector{ 1.0f, 1.0f, 1.0f });
-        }
-    }
-
-    if (currentTotalGoals != lastTotalGoals)
-    {
-        lastTotalGoals = currentTotalGoals;
-
-        if (disasters.persistentRumble && !UNREAL_RUMBLE_CHEATS.empty())
-        {
-            currentRumbleIndex = (currentRumbleIndex + 1) % UNREAL_RUMBLE_CHEATS.size();
-        }
-
-        if (disasters.biggerGoals)
-        {
-            auto goals = server.GetGoals();
-            if (!goals.IsNull())
-            {
-                float targetGoalScale = 1.0f + (static_cast<float>(currentTotalGoals) * 0.20f);
-                if (targetGoalScale > 2.5f)
-                {
-                    targetGoalScale = 2.5f;
-                }
-                for (int i = 0; i < goals.Count(); ++i)
-                {
-                    auto goal = goals.Get(i);
-                    if (goal.IsNull()) continue;
-
-                    Vector standardExtent = Vector{ 400.0f, 900.0f, 300.0f };
-                    goal.SetLocalExtent(Vector{ standardExtent.X * targetGoalScale, standardExtent.Y * targetGoalScale, standardExtent.Z * targetGoalScale });
-                }
-            }
-        }
-    }
-
-    float frameDelta = 0.016667f;
-    rumbleItemTimer += frameDelta;
-
-    if (disasters.persistentRumble)
-    {
-        if (rumbleItemTimer >= 1.5f)
-        {
-            rumbleItemTimer = 0.0f;
-            if (!UNREAL_RUMBLE_CHEATS.empty())
-            {
-                gameWrapper->ExecuteUnrealCommand(UNREAL_RUMBLE_CHEATS[currentRumbleIndex]);
-            }
-        }
-    }
-    else if (disasters.quickRumble)
-    {
-        if (rumbleItemTimer >= 1.0f)
-        {
-            rumbleItemTimer = 0.0f;
-            if (!UNREAL_RUMBLE_CHEATS.empty())
-            {
-                int randIndex = std::rand() % UNREAL_RUMBLE_CHEATS.size();
-                gameWrapper->ExecuteUnrealCommand(UNREAL_RUMBLE_CHEATS[randIndex]);
-            }
-        }
-    }
-
-    if (disasters.quickRumble || disasters.persistentRumble)
-    {
-        auto cars = server.GetCars();
-        if (!cars.IsNull())
-        {
-            for (int i = 0; i < cars.Count(); ++i)
-            {
-                auto car = cars.Get(i);
-                if (car.IsNull()) continue;
-
-                auto boostComp = car.GetBoostComponent();
-                if (!boostComp.IsNull())
-                {
-                    boostComp.SetBoostAmount(1.0f);
-                }
-            }
-        }
-    }
-}
-
-void RLDisasters::OnPlayersReset(std::string eventName)
-{
-    if (!disasters.closestSpawn) return;
-    if (!gameWrapper || !gameWrapper->IsInGame()) return;
-
-    ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (server.IsNull()) return;
-
-    auto cars = server.GetCars();
-    if (cars.IsNull()) return;
-
-    for (int index = 0; index < cars.Count(); ++index)
-    {
-        auto currentCar = cars.Get(index);
-        if (currentCar.IsNull()) continue;
-
-        unsigned char teamIdentifier = currentCar.GetTeamNum2();
-        Vector positionVector = currentCar.GetLocation();
-
-        float structuralTargetY = (teamIdentifier == 0) ? 5120.0f : -5120.0f;
-
-        Vector headingTrajectory = Vector(0.0f, structuralTargetY, 0.0f) - positionVector;
-        
-        float calculationYawRad = atan2f(headingTrajectory.Y, headingTrajectory.X);
-        float alignmentScalingFactor = 65536.0f / (2.0f * 3.14159265f);
-        int targetUnrealYaw = static_cast<int>(calculationYawRad * alignmentScalingFactor);
-
-        Rotator transformationRotator;
-        transformationRotator.Pitch = 0;
-        transformationRotator.Yaw = targetUnrealYaw;
-        transformationRotator.Roll = 0;
-
-        currentCar.SetRotation(transformationRotator);
-        currentCar.SetVelocity(Vector(0.0f, 0.0f, 0.0f));
-        currentCar.SetAngularVelocity(Vector(0.0f, 0.0f, 0.0f), false);
-    }
-}
-
-void RLDisasters::ResetAll()
-{
-    blueGoals = 0;
-    orangeGoals = 0;
-    lastTotalGoals = -1;
-    rumbleItemTimer = 0.0f;
-    currentRumbleIndex = 0;
-
-    if (gameWrapper && gameWrapper->IsInGame())
-    {
-        ServerWrapper server = gameWrapper->GetCurrentGameState();
-        if (!server.IsNull())
-        {
-            auto ball = server.GetBall();
-            if (!ball.IsNull())
-            {
-                ball.SetDrawScale3D(Vector{ 1.0f, 1.0f, 1.0f });
-            }
-        }
-    }
-}
-
-void RLDisasters::RenderSettings()
-{
-    ImGui::Text("Rocket League Disasters System Configurations");
-    ImGui::Separator();
-
-    if (ImGui::Checkbox("Closest Spawn Realignment", &disasters.closestSpawn))
-    {
-        if (_cvarManager) _cvarManager->getCvar("disasters_closestSpawn").setValue(disasters.closestSpawn ? 1 : 0);
-    }
-    if (ImGui::Checkbox("Expanding Goal Hitboxes", &disasters.biggerGoals))
-    {
-        if (_cvarManager) _cvarManager->getCvar("disasters_biggerGoals").setValue(disasters.biggerGoals ? 1 : 0);
-    }
-    if (ImGui::Checkbox("Expanding Visual Ball Size", &disasters.biggerField))
-    {
-        if (_cvarManager) _cvarManager->getCvar("disasters_biggerField").setValue(disasters.biggerField ? 1 : 0);
-    }
-    if (ImGui::Checkbox("Quick Boost & Item Injection", &disasters.quickRumble))
-    {
-        if (_cvarManager) _cvarManager->getCvar("disasters_quickRumble").setValue(disasters.quickRumble ? 1 : 0);
-    }
-    if (ImGui::Checkbox("Persistent Locked Rumble Power-Up", &disasters.persistentRumble))
-    {
-        if (_cvarManager) _cvarManager->getCvar("disasters_persistentRumble").setValue(disasters.persistentRumble ? 1 : 0);
-    }
+    return "RLDisasters";
 }
 
 void RLDisasters::SetImGuiContext(uintptr_t ctx)
 {
     ImGui::SetCurrentContext(reinterpret_cast<ImGuiContext*>(ctx));
 }
+
+void RLDisasters::AddLog(const std::string& message)
+{
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&in_time_t), "[%H:%M:%S] ") << message;
+    
+    diagnosticLogs.push_back(ss.str());
+    if (diagnosticLogs.size() > 40) {
+        diagnosticLogs.erase(diagnosticLogs.begin());
+    }
+}
+
+bool RLDisasters::IsActiveWindow() { return isWindowOpen; }
+void RLDisasters::EnsureActiveWindow() { isWindowOpen = true; }
+void RLDisasters::OnOpen() { isWindowOpen = true; }
+void RLDisasters::OnClose() { isWindowOpen = false; }
+
+std::vector<std::string> RLDisasters::BuildActiveItemPool()
+{
+    std::vector<std::string> pool;
+    if (config.allowSpikes) pool.push_back("spikes");
+    if (config.allowPlunger) pool.push_back("plunger");
+    if (config.allowMagnet) pool.push_back("magnet");
+    if (config.allowBoot) pool.push_back("boot");
+    if (config.allowGrapple) pool.push_back("grapple");
+    if (config.allowFreeze) pool.push_back("freeze");
+    if (config.allowTornado) pool.push_back("tornado");
+    if (config.allowTeleport) pool.push_back("teleport");
+    if (config.allowPowerhit) pool.push_back("powerhit");
+    if (config.allowDisruptor) pool.push_back("disruptor");
+    return pool;
+}
+
+void RLDisasters::OnTick(std::string eventName)
+{
+    if (!config.masterEnabled || !gameWrapper->IsInGame()) {
+        return;
+    }
+
+    ServerWrapper server = gameWrapper->GetCurrentGameState();
+    if (server.IsNull()) {
+        return;
+    }
+
+    auto currentTime = std::chrono::steady_clock::now();
+    float deltaTime = std::chrono::duration<float>(currentTime - lastTickTime).count();
+    lastTickTime = currentTime;
+
+    if (deltaTime > 0.1f) deltaTime = 0.0166f;
+
+    if (config.biggerFieldMode) {
+        ApplyFieldScale(server);
+    } else {
+        ResetScales(server);
+    }
+
+    if (config.customGravity) {
+        cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(config.gravityValue));
+    }
+
+    ArrayWrapper<CarWrapper> cars = server.GetCars();
+    for (int i = 0; i < cars.Count(); ++i) {
+        CarWrapper car = cars.Get(i);
+        if (car.IsNull()) continue;
+
+        PriWrapper pri = car.GetPRI();
+        if (pri.IsNull()) continue;
+
+        if (pri.GetUniqueIdWrapper().GetUID() == gameWrapper->GetUniqueIdValue()) {
+            
+            if (config.infiniteBoost) {
+                BoostWrapper boost = car.GetBoostComponent();
+                if (!boost.IsNull()) {
+                    boost.SetBoostAmount(1.0f);
+                }
+            }
+
+            if (config.quickRumbleEnabled) {
+                cumulativeRumbleTimer += deltaTime;
+                if (cumulativeRumbleTimer >= config.rumbleInterval) {
+                    cumulativeRumbleTimer = 0.0f;
+                    
+                    std::vector<std::string> pool = BuildActiveItemPool();
+                    if (!pool.empty()) {
+                        std::string targetItem = pool[rand() % pool.size()];
+                        cvarManager->executeCommand("giveitem " + targetItem);
+                        AddLog("Rumble loop triggered item: " + targetItem);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void RLDisasters::ApplyFieldScale(ServerWrapper& server)
+{
+    if (config.fieldScaleMultiplier < 1.0f) config.fieldScaleMultiplier = 1.0f;
+    float scaleFactor = 1.0f / config.fieldScaleMultiplier;
+    Vector scaleVector = Vector{ scaleFactor, scaleFactor, scaleFactor };
+
+    ArrayWrapper<BallWrapper> balls = server.GetBalls();
+    for (int i = 0; i < balls.Count(); ++i) {
+        BallWrapper ball = balls.Get(i);
+        if (!ball.IsNull()) {
+            ball.SetDrawScale3D(scaleVector);
+        }
+    }
+
+    ArrayWrapper<CarWrapper> cars = server.GetCars();
+    for (int i = 0; i < cars.Count(); ++i) {
+        CarWrapper car = cars.Get(i);
+        if (!car.IsNull()) {
+            car.SetDrawScale3D(scaleVector);
+        }
+    }
+}
+
+void RLDisasters::ResetScales(ServerWrapper& server)
+{
+    Vector normalVector = Vector{ 1.0f, 1.0f, 1.0f };
+
+    ArrayWrapper<BallWrapper> balls = server.GetBalls();
+    for (int i = 0; i < balls.Count(); ++i) {
+        BallWrapper ball = balls.Get(i);
+        if (!ball.IsNull() && ball.GetDrawScale3D().X != 1.0f) {
+            ball.SetDrawScale3D(normalVector);
+        }
+    }
+
+    ArrayWrapper<CarWrapper> cars = server.GetCars();
+    for (int i = 0; i < cars.Count(); ++i) {
+        CarWrapper car = cars.Get(i);
+        if (!car.IsNull() && car.GetDrawScale3D().X != 1.0f) {
+            car.SetDrawScale3D(normalVector);
+        }
+    }
+}
+
+void RLDisasters::RenderCanvasHUD(CanvasWrapper canvas)
+{
+    if (!config.masterEnabled || !config.showHud) return;
+
+    Vector2 anchorPos = Vector2{ 40, 50 };
+    Vector2 containerSize = Vector2{ 380, 160 };
+
+    canvas.SetColor(10, 14, 20, 220);
+    canvas.SetPosition(anchorPos);
+    canvas.FillBox(containerSize);
+
+    canvas.SetColor(230, 95, 0, 255);
+    canvas.SetPosition(anchorPos);
+    canvas.DrawBox(containerSize);
+
+    canvas.SetPosition(Vector2{ anchorPos.X + 20, anchorPos.Y + 15 });
+    canvas.DrawString("DISASTER MATRIX INTERFACE SYSTEM", 1.2f, 1.2f);
+
+    canvas.SetColor(255, 255, 255, 255);
+    
+    canvas.SetPosition(Vector2{ anchorPos.X + 20, anchorPos.Y + 45 });
+    if (config.biggerFieldMode) {
+        std::stringstream fs;
+        fs << "Stadium Context Scale: " << std::fixed << std::setprecision(1) << config.fieldScaleMultiplier << "x Dynamic Matrix";
+        canvas.DrawString(fs.str(), 1.0f, 1.0f);
+    } else {
+        canvas.DrawString("Stadium Context Scale: ENGINE UNMODIFIED STANDARDS", 1.0f, 1.0f);
+    }
+
+    canvas.SetPosition(Vector2{ anchorPos.X + 20, anchorPos.Y + 75 });
+    if (config.quickRumbleEnabled) {
+        std::stringstream rs;
+        rs << "Item Pipeline: INJECTING (Next sequence in: " << std::fixed << std::setprecision(2) << (config.rumbleInterval - cumulativeRumbleTimer) << "s)";
+        canvas.DrawString(rs.str(), 1.0f, 1.0f);
+    } else {
+        canvas.DrawString("Item Pipeline: STANDBY OVERWATCH", 1.0f, 1.0f);
+    }
+
+    canvas.SetPosition(Vector2{ anchorPos.X + 20, anchorPos.Y + 105 });
+    canvas.DrawString(config.infiniteBoost ? "Combustion Multiplier: UNLIMITED FLUID CELL" : "Combustion Multiplier: BASELINE FUEL CAPS", 1.0f, 1.0f);
+
+    canvas.SetPosition(Vector2{ anchorPos.X + 20, anchorPos.Y + 135 });
+    std::stringstream gs;
+    gs << "World Gravity Grid: " << (config.customGravity ? std::to_string((int)config.gravityValue) : "650 (NOMINAL FORCE)");
+    canvas.DrawString(gs.str(), 1.0f, 1.0f);
+}
+
+void RLDisasters::RenderSettings()
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
+    ImGui::Text("ROCKET LEAGUE DISASTERS CORE ENGINE PLATFORM");
+    ImGui::PopStyleColor();
+    ImGui::Separator();
+    
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+
+    ImGui::Checkbox("Master Automation Engine Switch", &config.masterEnabled);
+    ImGui::SameLine();
+    ImGui::Checkbox("Display Diagnostic HUD Canvas", &config.showHud);
+
+    if (!config.masterEnabled) {
+        ImGui::Dummy(ImVec2(0.0f, 10.0f));
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Activate the Master Control Core to reveal architectural modifications.");
+        return;
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 10.0f));
+
+    if (ImGui::BeginTabBar("CatastropheModularTabs")) {
+        
+        if (ImGui::BeginTabItem("Stadium Scale Modifiers")) {
+            ImGui::Dummy(ImVec2(0.0f, 5.0f));
+            ImGui::Checkbox("Simulate Gigantic Field (Scale Down Players & Ball)", &config.biggerFieldMode);
+            
+            if (config.biggerFieldMode) {
+                ImGui::SetNextItemWidth(260.0f);
+                ImGui::SliderFloat("Relative Stadium Scale", &config.fieldScaleMultiplier, 1.0f, 6.0f, "%.1fx Arena Size");
+                ImGui::TextWrapped("Notice: Dynamically coordinates player, car, and ball meshes downward to expand physical pitch parameters without inducing clipping collisions.");
+            }
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Rumble Loop & Core Items")) {
+            ImGui::Dummy(ImVec2(0.0f, 5.0f));
+            ImGui::Checkbox("Activate 1-Second Precision Injection Loop", &config.quickRumbleEnabled);
