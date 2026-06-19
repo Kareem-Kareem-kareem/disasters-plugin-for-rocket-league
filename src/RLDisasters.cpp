@@ -295,7 +295,7 @@ void RLDisasters::ResetAll()
 
 void RLDisasters::RenderSettings()
 {
-    ImGui::TextProtected("Rocket League Disasters System Configurations");
+    ImGui::Text("Rocket League Disasters System Configurations");
     ImGui::Separator();
 
     if (ImGui::Checkbox("Closest Spawn Realignment", &disasters.closestSpawn))
