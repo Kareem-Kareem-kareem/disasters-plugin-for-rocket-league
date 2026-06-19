@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <mutex>
 
 struct PluginConfig {
     bool masterEnabled = false;
@@ -55,6 +56,9 @@ private:
     float cumulativeRumbleTimer = 0.0f;
     bool isWindowOpen = false;
     std::vector<std::string> diagnosticLogs;
+    std::mutex logMutex;
+    float lastGravityValue = 0.0f;
+    bool lastGravityState = false;
     
     void AddLog(const std::string& message);
     void ApplyFieldScale(class ServerWrapper& server);
