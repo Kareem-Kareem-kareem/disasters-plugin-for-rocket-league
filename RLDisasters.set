@@ -1,8 +1,11 @@
-RL Disasters Plugin
-9|Choose which match disasters are active:
-8|
-1|Snap Cars to Opponent Goal on Spawn|disasters_closestSpawn
-1|Expanding Goals (+15% per Goal Scored)|disasters_biggerGoals
-1|Expanding Field (+10% per Goal Scored)|disasters_biggerField
-1|Quick Rumble Mode (1s Cooldown + Quick Boost)|disasters_quickRumble
-1|Persistent Boost Override (Infinite 100% Boost)|disasters_persistentRumble
+RL Disasters
+9|Only works while YOU are hosting: Freeplay, Custom Training, or a LAN match started with "host".
+8
+1|Closest Spawn (spawn in line with your own goal)|disasters_closestSpawn
+1|Growing Ball (+8% per goal, caps at 2.5x)|disasters_growingBall
+8
+1|Flicker Boost (unlimited boost flips on/off every second)|disasters_flickerBoost
+1|Infinite Boost (always unlimited)|disasters_infiniteBoost
+1|Chaos Gravity (drifts to a random value every 4s)|disasters_chaosGravity
+8
+0|Reset All Disasters|disasters_resetall
