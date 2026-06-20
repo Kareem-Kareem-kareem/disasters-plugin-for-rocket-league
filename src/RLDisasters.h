@@ -15,6 +15,7 @@ private:
     bool flickerBoostOn  = false;
     bool infiniteBoostOn = false;
     bool chaosGravityOn  = false;
+    bool rumbleDisasterOn = false;
 
     int   goalsScored   = 0;
     float ballScale     = 1.0f;
@@ -36,6 +37,8 @@ private:
     void TickFlickerBoost(float delta);
     void ApplyInfiniteBoost();
     void TickChaosGravity(float delta);
+    void ToggleRumbleDisaster(bool enabled);
+    void SetRandomRumble();
 
     void ResetAll();
 };
