@@ -1,6 +1,7 @@
 #pragma once
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include <string>
+#include <vector>
 
 class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin
 {
@@ -9,7 +10,6 @@ public:
     void onUnload() override;
 
 private:
-    // running state, mirrors the cvars
     bool closestSpawnOn  = false;
     bool growingBallOn   = false;
     bool flickerBoostOn  = false;
@@ -24,6 +24,11 @@ private:
     float currentGravity = -650.0f;
     int   lastPhysicsFrame = -1;
 
+    std::vector<std::string> rumbleAbilities = {
+        "boot", "disruptor", "freezer", "grapplinghook", "haymaker",
+        "magnetizer", "plunger", "powerhitter", "spike", "swapper", "tornado"
+    };
+
     void HookEvents();
     void UnhookEvents();
 
@@ -37,7 +42,8 @@ private:
     void TickFlickerBoost(float delta);
     void ApplyInfiniteBoost();
     void TickChaosGravity(float delta);
-    void ToggleRumbleDisaster(bool enabled);
+    
+    void DisableAllRumble();
     void SetRandomRumble();
 
     void ResetAll();
