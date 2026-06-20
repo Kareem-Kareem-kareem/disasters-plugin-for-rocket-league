@@ -259,7 +259,6 @@ void RLDisasters::ResetAll()
     currentGravity = -650.0f;
 
     cvarManager->executeCommand("sv_soccar_gravity -650", false);
-    DisableAllRumble();
 
     if (!gameWrapper->IsInGame()) return;
     ServerWrapper server = gameWrapper->GetCurrentGameState();
