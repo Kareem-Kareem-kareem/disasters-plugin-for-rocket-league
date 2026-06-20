@@ -3,6 +3,7 @@ RL Disasters
 8
 1|Closest Spawn (spawn in line with your own goal)|disasters_closestSpawn
 1|Growing Ball (+8% per goal, caps at 2.5x)|disasters_growingBall
+1|Random Rumble Powerups (swaps on goal)|disasters_rumble
 8
 1|Flicker Boost (unlimited boost flips on/off every second)|disasters_flickerBoost
 1|Infinite Boost (always unlimited)|disasters_infiniteBoost
