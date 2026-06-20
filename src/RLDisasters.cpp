@@ -11,9 +11,6 @@
 
 BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters", "1.0", 0)
 
-// ════════════════════════════════════════════════════════════════════
-//  onLoad / onUnload
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::onLoad()
 {
     cvarManager->log("RLDisasters: loading");
@@ -73,7 +70,11 @@ void RLDisasters::onLoad()
     cvarManager->registerCvar("disasters_rumble", "0", "Enable random rumble powerups that swap every goal", true, true, 0, true, 1)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             rumbleDisasterOn = cvar.getBoolValue();
-            ToggleRumbleDisaster(rumbleDisasterOn);
+            if (rumbleDisasterOn) {
+                SetRandomRumble();
+            } else {
+                DisableAllRumble();
+            }
         });
 
     cvarManager->registerNotifier("disasters_resetall", [this](std::vector<std::string>) {
@@ -96,9 +97,6 @@ void RLDisasters::onUnload()
     ResetAll();
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Hooks
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::HookEvents()
 {
     gameWrapper->HookEvent("Function GameEvent_Soccar_TA.Active.StartRound",
@@ -122,9 +120,6 @@ void RLDisasters::UnhookEvents()
     gameWrapper->UnhookEvent("Function TAGame.Car_TA.SetVehicleInput");
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Match lifecycle
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::OnMatchStarted(std::string)
 {
     ResetAll();
@@ -158,9 +153,6 @@ void RLDisasters::OnPlayerSpawned(std::string)
     if (closestSpawnOn) ApplyClosestSpawn();
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Closest Spawn
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::ApplyClosestSpawn()
 {
     if (!gameWrapper->IsInGame()) return;
@@ -183,9 +175,6 @@ void RLDisasters::ApplyClosestSpawn()
     car.SetRotation(rot);
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Growing Ball
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::GrowBall()
 {
     if (!gameWrapper->IsInGame()) return;
@@ -198,9 +187,6 @@ void RLDisasters::GrowBall()
     ball.SetBallScale(ballScale);
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Flicker Boost
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::TickFlickerBoost(float delta)
 {
     if (!gameWrapper->IsInGame()) return;
@@ -220,9 +206,6 @@ void RLDisasters::TickFlickerBoost(float delta)
     }
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Infinite Boost
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::ApplyInfiniteBoost()
 {
     if (!gameWrapper->IsInGame()) return;
@@ -239,9 +222,6 @@ void RLDisasters::ApplyInfiniteBoost()
     }
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Chaos Gravity
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::TickChaosGravity(float delta)
 {
     gravityTimer += delta;
@@ -254,36 +234,22 @@ void RLDisasters::TickChaosGravity(float delta)
     cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(currentGravity), false);
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Rumble Automation
-// ════════════════════════════════════════════════════════════════════
-void RLDisasters::ToggleRumbleDisaster(bool enabled)
+void RLDisasters::DisableAllRumble()
 {
-    if (!enabled) {
-        cvarManager->executeCommand("sv_freeplay_rumble_enable_all 0", false);
-    } else {
-        SetRandomRumble();
+    for (const auto& ability : rumbleAbilities) {
+        cvarManager->executeCommand("sv_freeplay_rumble_enable_" + ability + " 0", false);
     }
 }
 
 void RLDisasters::SetRandomRumble()
 {
+    DisableAllRumble();
     if (!rumbleDisasterOn) return;
 
-    cvarManager->executeCommand("sv_freeplay_rumble_enable_all 0", false);
-
-    std::vector<std::string> abilities = {
-        "boot", "disruptor", "freezer", "grapplinghook", "haymaker",
-        "magnetizer", "plunger", "powerhitter", "spike", "swapper", "tornado"
-    };
-
-    std::string choice = abilities[rand() % abilities.size()];
-    cvarManager->executeCommand("sv_freeplay_rumble_enable_" + choice + " 1", false);
+    int index = rand() % rumbleAbilities.size();
+    cvarManager->executeCommand("sv_freeplay_rumble_enable_" + rumbleAbilities[index] + " 1", false);
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Reset
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::ResetAll()
 {
     goalsScored   = 0;
@@ -293,7 +259,7 @@ void RLDisasters::ResetAll()
     currentGravity = -650.0f;
 
     cvarManager->executeCommand("sv_soccar_gravity -650", false);
-    cvarManager->executeCommand("sv_freeplay_rumble_enable_all 0", false);
+    DisableAllRumble();
 
     if (!gameWrapper->IsInGame()) return;
     ServerWrapper server = gameWrapper->GetCurrentGameState();
