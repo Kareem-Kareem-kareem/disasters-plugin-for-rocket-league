@@ -10,20 +10,17 @@ public:
     void onUnload() override;
 
 private:
-    bool closestSpawnOn  = false;
-    bool growingBallOn   = false;
-    bool flickerBoostOn  = false;
-    bool infiniteBoostOn = false;
-    bool chaosGravityOn  = false;
-    bool rumbleDisasterOn = false;
+    bool growingBallOn      = false;
+    bool persistentRumbleOn = false;
+    bool lowGravityGoalsOn  = false;
 
-    int   goalsScored   = 0;
-    float ballScale     = 1.0f;
-    float flickerTimer  = 0.0f;
-    float gravityTimer  = 0.0f;
-    float currentGravity = -650.0f;
+    int   goalsScored      = 0;
+    float ballScale        = 1.0f;
+    float currentGravity   = -650.0f;
     int   lastPhysicsFrame = -1;
 
+    // the 11 real freeplay rumble item cvars (confirmed via BakkesMod's
+    // own "Undocumented console commands" wiki page)
     std::vector<std::string> rumbleAbilities = {
         "boot", "disruptor", "freezer", "grapplinghook", "haymaker",
         "magnetizer", "plunger", "powerhitter", "spike", "swapper", "tornado"
@@ -35,16 +32,11 @@ private:
     void OnMatchStarted(std::string eventName);
     void OnGoalScored(std::string eventName);
     void OnTick(std::string eventName);
-    void OnPlayerSpawned(std::string eventName);
 
-    void ApplyClosestSpawn();
     void GrowBall();
-    void TickFlickerBoost(float delta);
-    void ApplyInfiniteBoost();
-    void TickChaosGravity(float delta);
-    
     void DisableAllRumble();
-    void SetRandomRumble();
+    void PickNewRumble();
+    void ApplyLowGravityGoals();
 
     void ResetAll();
 };
