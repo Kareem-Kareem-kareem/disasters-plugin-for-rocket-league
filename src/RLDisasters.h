@@ -1,12 +1,19 @@
 #pragma once
 #include "bakkesmod/plugin/bakkesmodplugin.h"
+#include "bakkesmod/plugin/pluginwindow.h"
+#include "bakkesmod/wrappers/GameEvent/ServerWrapper.h"
+#include "IMGUI/imgui.h"
 #include <string>
 
-class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin
+class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginSettingsWindow
 {
 public:
     void onLoad() override;
     void onUnload() override;
+
+    // Settings Window Interface implementation
+    void RenderSettings() override;
+    std::string GetPluginName() override;
 
 private:
     // Core Plugin State Flags
