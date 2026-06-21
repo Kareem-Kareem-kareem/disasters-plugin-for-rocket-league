@@ -76,6 +76,35 @@ void RLDisasters::ApplyGravitySettings()
     cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(currentGravity), false);
 }
 
+void RLDisasters::RenderSettings()
+{
+    ImGui::Text("Rocket League Disasters Plugin");
+    ImGui::Separator();
+
+    // The main toggle for the plugin
+    bool enabled = cvarManager->getCvar("disasters_enabled").getBoolValue();
+    if (ImGui::Checkbox("Enable Disasters Mod", &enabled)) {
+        cvarManager->executeCommand("disasters_enabled " + std::to_string(enabled));
+    }
+
+    ImGui::Spacing();
+
+    // Check if a local server instance exists (works in LAN, Custom Maps, and Freeplay)
+    ServerWrapper server = gameWrapper->GetGameEventAsServer();
+    if (!server) {
+        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Status: Must be in a Match or Freeplay to synchronize physics.");
+        return;
+    }
+
+    // You have server authority locally
+    ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "Status: Host / Server Authority Active");
+    ImGui::Separator();
+
+    // Active Status Display
+    ImGui::Text("Current Selected Item ID: %d", currentRandomItemIndex);
+    ImGui::Text("Active Gravity: %.1f", currentGravity);
+}
+
 void RLDisasters::ResetMatchState()
 {
     currentGravity = -650.0f;
