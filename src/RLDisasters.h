@@ -1,7 +1,6 @@
 #pragma once
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include <string>
-#include <vector>
 
 class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin
 {
@@ -10,27 +9,21 @@ public:
     void onUnload() override;
 
 private:
-    // State Flags and Variables
+    // Core Plugin State Flags
     bool pluginEnabled = false;
-    bool isMatchRunning = false;
     float currentGravity = -650.0f;
-    std::string currentRoundItem = "GrapplingHook";
+    int currentRandomItemIndex = 1;
 
-    // Item Pool
-    std::vector<std::string> rumbleItems = {
-        "GrapplingHook", "Boot", "Freeze", "Spikes", 
-        "Plunger", "Swapper", "Tornado", "PowerUp", 
-        "Disruptor", "Spring", "Magnet"
-    };
+    // Event Registration Hooks
+    void HookEvents();
+    void UnhookEvents();
 
-    // Event Hook Handlers
-    void OnMatchStart(std::string eventName);
-    void OnMatchEnd(std::string eventName);
-    void OnTick(std::string eventName);
+    // Event Receivers
+    void OnRoundStart(std::string eventName);
+    void OnGoalScored(std::string eventName);
 
-    // Helper Functions
-    void SelectNextRoundItem();
-    void EnforcePersistentItem();
+    // Modification Utility Methods
+    void ChooseRandomRumbleItem();
     void ApplyGravitySettings();
     void ResetMatchState();
 };
