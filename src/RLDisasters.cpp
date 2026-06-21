@@ -1,103 +1,118 @@
 #include "RLDisasters.h"
-#include "bakkesmod/wrappers/gamewrapper.h"
-#include <algorithm>
-#include <cstdlib>
-#include <ctime>
 
-BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters", "1.0", 0)
+BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disaster Chaos Mod", plugin_version, PLUGINTYPE_FREEPLAY)
 
 void RLDisasters::onLoad()
 {
-    std::srand(static_cast<unsigned int>(std::time(nullptr)));
-
-    cvarManager->registerCvar("disasters_persistentRumble", "0", "Enable persistent rumble item generation", true, true, 0, true, 1)
-        .addOnValueChanged([this](std::string, CVarWrapper cvar) {
-            persistentRumbleOn = cvar.getBoolValue();
-            if (persistentRumbleOn) {
-                ChooseRandomRumbleItem();
-            } else {
-                cvarManager->executeCommand("sv_freeplay_rumble_enable_item 0", false);
+    cvarManager->registerCvar("rl_disasters_enabled", "0", "Enable the Disaster Chaos Mod plugin", true, true, 0, true, 1)
+        .addOnValueChanged([this](std::string oldValue, CVarWrapper cvar) {
+            pluginEnabled = cvar.getBoolValue();
+            if (!pluginEnabled) {
+                ResetMatchState();
             }
         });
 
-    cvarManager->registerCvar("disasters_lowGravityGoals", "0", "Gravity gets weaker every goal scored", true, true, 0, true, 1)
-        .addOnValueChanged([this](std::string, CVarWrapper cvar) {
-            lowGravityGoalsOn = cvar.getBoolValue();
-            if (!lowGravityGoalsOn) {
-                currentGravity = -650.0f;
-                cvarManager->executeCommand("sv_soccar_gravity -650", false);
-            }
-        });
-
-    cvarManager->registerCvar("disasters_gravityPerGoal", "100", "Gravity units toward zero per goal", true, true, 10, true, 400)
-        .addOnValueChanged([this](std::string, CVarWrapper cvar) {
-            gravityStepPerGoal = cvar.getFloatValue();
-        });
-
-    cvarManager->registerNotifier("disasters_resetall", [this](std::vector<std::string>) {
-        cvarManager->getCvar("disasters_persistentRumble").setValue(0);
-        cvarManager->getCvar("disasters_lowGravityGoals").setValue(0);
-        ResetAll();
-    }, "Resets all disasters", PERMISSION_ALL);
-
-    HookEvents();
+    gameWrapper->HookEvent("Function TAGame.GameEvent_TA.OnInit", std::bind(&RLDisasters::OnMatchStart, this, std::placeholders::_1));
+    gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.EventMatchEnded", std::bind(&RLDisasters::OnMatchEnd, this, std::placeholders::_1));
+    gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.EventGoalScored", std::bind(&RLDisasters::OnGoalScored, this, std::placeholders::_1));
+    gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput", std::bind(&RLDisasters::OnTick, this, std::placeholders::_1));
 }
 
 void RLDisasters::onUnload()
 {
-    UnhookEvents();
-    ResetAll();
+    gameWrapper->UnhookEvent("Function TAGame.GameEvent_TA.OnInit");
+    gameWrapper->UnhookEvent("Function TAGame.GameEvent_Soccar_TA.EventMatchEnded");
+    gameWrapper->UnhookEvent("Function TAGame.GameEvent_Soccar_TA.EventGoalScored");
+    gameWrapper->UnhookEvent("Function TAGame.Car_TA.SetVehicleInput");
 }
 
-void RLDisasters::HookEvents()
+void RLDisasters::OnMatchStart(std::string eventName)
 {
-    gameWrapper->HookEvent("Function GameEvent_Soccar_TA.Active.StartRound",
-        [this](std::string e) { OnMatchStarted(e); });
+    if (!pluginEnabled) return;
 
-    gameWrapper->HookEvent("Function TAGame.Ball_TA.Explode",
-        [this](std::string e) { OnGoalScored(e); });
+    isMatchRunning = true;
+    currentGravity = -650.0f;
+    SelectNextRoundItem();
+    ApplyGravitySettings();
 }
 
-void RLDisasters::UnhookEvents()
+void RLDisasters::OnMatchEnd(std::string eventName)
 {
-    gameWrapper->UnhookEvent("Function GameEvent_Soccar_TA.Active.StartRound");
-    gameWrapper->UnhookEvent("Function TAGame.Ball_TA.Explode");
+    ResetMatchState();
 }
 
-void RLDisasters::OnMatchStarted(std::string)
+void RLDisasters::OnGoalScored(std::string eventName)
 {
-    if (persistentRumbleOn) {
-        cvarManager->executeCommand("sv_freeplay_rumble_enable_item " + std::to_string(currentRandomItem), false);
+    if (!pluginEnabled || !isMatchRunning) return;
+
+    currentGravity += 100.0f;
+    if (currentGravity > -150.0f) {
+        currentGravity = -150.0f;
+    }
+    ApplyGravitySettings();
+
+    SelectNextRoundItem();
+}
+
+void RLDisasters::OnTick(std::string eventName)
+{
+    if (!pluginEnabled || !isMatchRunning) return;
+
+    CVarWrapper ballScaleCvar = cvarManager->getCvar("sv_soccar_ballscale");
+    if (ballScaleCvar && ballScaleCvar.getFloatValue() != 1.0f) {
+        ballScaleCvar.setValue(1.0f);
+    }
+
+    EnforcePersistentItem();
+}
+
+void RLDisasters::ResetMatchState()
+{
+    isMatchRunning = false;
+    currentGravity = -650.0f;
+    
+    CVarWrapper gravityCvar = cvarManager->getCvar("sv_soccar_gravity");
+    if (gravityCvar) {
+        gravityCvar.setValue(-650.0f);
+    }
+
+    CVarWrapper ballScaleCvar = cvarManager->getCvar("sv_soccar_ballscale");
+    if (ballScaleCvar) {
+        ballScaleCvar.setValue(1.0f);
     }
 }
 
-void RLDisasters::OnGoalScored(std::string)
+void RLDisasters::ApplyGravitySettings()
 {
-    if (!gameWrapper->IsInGame()) return;
-    goalsScored++;
-    if (lowGravityGoalsOn) ApplyLowGravityGoals();
-    if (persistentRumbleOn) ChooseRandomRumbleItem();
+    CVarWrapper gravityCvar = cvarManager->getCvar("sv_soccar_gravity");
+    if (gravityCvar) {
+        gravityCvar.setValue(currentGravity);
+    }
 }
 
-void RLDisasters::ChooseRandomRumbleItem()
+void RLDisasters::SelectNextRoundItem()
 {
-    currentRandomItem = 1 + (std::rand() % 11);
-    cvarManager->executeCommand("sv_freeplay_rumble_enable_item " + std::to_string(currentRandomItem), false);
+    if (rumbleItems.empty()) return;
+
+    int randomIndex = rand() % rumbleItems.size();
+    currentRoundItem = rumbleItems[randomIndex];
+
+    cvarManager->log("Disaster Mod: Next round item rolled successfully -> " + currentRoundItem);
 }
 
-void RLDisasters::ApplyLowGravityGoals()
+void RLDisasters::EnforcePersistentItem()
 {
-    float nextGravity = currentGravity + gravityStepPerGoal;
-    float cap = -150.0f;
-    currentGravity = std::min<float>(nextGravity, cap);
-    cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(currentGravity), false);
-}
+    ServerWrapper server = gameWrapper->GetGameEventAsServer();
+    if (!server) return;
 
-void RLDisasters::ResetAll()
-{
-    goalsScored = 0;
-    currentGravity = -650.0f;
-    currentRandomItem = 0;
-    cvarManager->executeCommand("sv_soccar_gravity -650", false);
-    cvarManager->executeCommand("sv_freeplay_rumble_enable_item 0", false);
+    ArrayWrapper<CarWrapper> cars = server.GetCars();
+    for (int i = 0; i < cars.Count(); i++) {
+        CarWrapper car = cars.Get(i);
+        if (!car) continue;
+
+        if (car.GetAttachedPickup().IsNull()) {
+            std::string command = "tweak item " + currentRoundItem;
+            cvarManager->executeCommand(command);
+        }
+    }
 }
