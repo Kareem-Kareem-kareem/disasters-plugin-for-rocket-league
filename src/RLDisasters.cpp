@@ -1,126 +1,84 @@
 #include "RLDisasters.h"
 #include "bakkesmod/wrappers/cvarwrapper.h"
 #include "bakkesmod/wrappers/gamewrapper.h"
-#include "bakkesmod/wrappers/GameObject/CarWrapper.h"
-#include "bakkesmod/wrappers/GameEvent/ServerWrapper.h"
-#include "bakkesmod/wrappers/arraywrapper.h"
+#include <algorithm>
 #include <cstdlib>
 #include <ctime>
 
-BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disaster Chaos Mod", "1.0", 0)
+BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters", "1.0", 0)
 
 void RLDisasters::onLoad()
 {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
     cvarManager->registerCvar("rl_disasters_enabled", "0", "Enable the Disaster Chaos Mod plugin", true, true, 0, true, 1)
-        .addOnValueChanged([this](std::string oldValue, CVarWrapper cvar) {
+        .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             pluginEnabled = cvar.getBoolValue();
             if (!pluginEnabled) {
                 ResetMatchState();
+            } else {
+                ChooseRandomRumbleItem();
             }
         });
 
-    gameWrapper->HookEvent("Function TAGame.GameEvent_TA.OnInit", std::bind(&RLDisasters::OnMatchStart, this, std::placeholders::_1));
-    gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.EventMatchEnded", std::bind(&RLDisasters::OnMatchEnd, this, std::placeholders::_1));
-    gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.EventGoalScored", std::bind(&RLDisasters::OnGoalScored, this, std::placeholders::_1));
-    gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput", std::bind(&RLDisasters::OnTick, this, std::placeholders::_1));
+    HookEvents();
 }
 
 void RLDisasters::onUnload()
 {
-    gameWrapper->UnhookEvent("Function TAGame.GameEvent_TA.OnInit");
-    gameWrapper->UnhookEvent("Function TAGame.GameEvent_Soccar_TA.EventMatchEnded");
-    gameWrapper->UnhookEvent("Function TAGame.GameEvent_Soccar_TA.EventGoalScored");
-    gameWrapper->UnhookEvent("Function TAGame.Car_TA.SetVehicleInput");
+    UnhookEvents();
+    ResetMatchState();
 }
 
-void RLDisasters::OnMatchStart(std::string eventName)
+void RLDisasters::HookEvents()
+{
+    gameWrapper->HookEvent("Function GameEvent_Soccar_TA.Active.StartRound",
+        [this](std::string e) { OnRoundStart(e); });
+
+    gameWrapper->HookEvent("Function TAGame.Ball_TA.Explode",
+        [this](std::string e) { OnGoalScored(e); });
+}
+
+void RLDisasters::UnhookEvents()
+{
+    gameWrapper->UnhookEvent("Function GameEvent_Soccar_TA.Active.StartRound");
+    gameWrapper->UnhookEvent("Function TAGame.Ball_TA.Explode");
+}
+
+void RLDisasters::OnRoundStart(std::string eventName)
 {
     if (!pluginEnabled) return;
 
-    isMatchRunning = true;
-    currentGravity = -650.0f;
-    SelectNextRoundItem();
     ApplyGravitySettings();
-}
-
-void RLDisasters::OnMatchEnd(std::string eventName)
-{
-    ResetMatchState();
+    cvarManager->log("RLDisasters: Round started. Active rolled item index for this round slot: " + std::to_string(currentRandomItemIndex));
 }
 
 void RLDisasters::OnGoalScored(std::string eventName)
 {
-    if (!pluginEnabled || !isMatchRunning) return;
+    if (!gameWrapper->IsInGame() || !pluginEnabled) return;
 
     currentGravity += 100.0f;
     if (currentGravity > -150.0f) {
-        currentGravity = -150.0f;
+        currentGravity = -150.0f; 
     }
-    ApplyGravitySettings();
-    SelectNextRoundItem();
+
+    ChooseRandomRumbleItem();
 }
 
-void RLDisasters::OnTick(std::string eventName)
+void RLDisasters::ChooseRandomRumbleItem()
 {
-    if (!pluginEnabled || !isMatchRunning) return;
-
-    CVarWrapper ballScaleCvar = cvarManager->getCvar("sv_soccar_ballscale");
-    if (ballScaleCvar && ballScaleCvar.getFloatValue() != 1.0f) {
-        ballScaleCvar.setValue(1.0f);
-    }
-
-    EnforcePersistentItem();
-}
-
-void RLDisasters::ResetMatchState()
-{
-    isMatchRunning = false;
-    currentGravity = -650.0f;
-    
-    CVarWrapper gravityCvar = cvarManager->getCvar("sv_soccar_gravity");
-    if (gravityCvar) {
-        gravityCvar.setValue(-650.0f);
-    }
-
-    CVarWrapper ballScaleCvar = cvarManager->getCvar("sv_soccar_ballscale");
-    if (ballScaleCvar) {
-        ballScaleCvar.setValue(1.0f);
-    }
+    currentRandomItemIndex = 1 + (std::rand() % 11);
+    cvarManager->log("RLDisasters: A goal was scored! Next round item slot set to: " + std::to_string(currentRandomItemIndex));
 }
 
 void RLDisasters::ApplyGravitySettings()
 {
-    CVarWrapper gravityCvar = cvarManager->getCvar("sv_soccar_gravity");
-    if (gravityCvar) {
-        gravityCvar.setValue(currentGravity);
-    }
+    cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(currentGravity), false);
 }
 
-void RLDisasters::SelectNextRoundItem()
+void RLDisasters::ResetMatchState()
 {
-    if (rumbleItems.empty()) return;
-
-    int randomIndex = std::rand() % rumbleItems.size();
-    currentRoundItem = rumbleItems[randomIndex];
-
-    cvarManager->log("Disaster Mod: Next round item rolled successfully -> " + currentRoundItem);
-}
-
-void RLDisasters::EnforcePersistentItem()
-{
-    ServerWrapper server = gameWrapper->GetGameEventAsServer();
-    if (!server) return;
-
-    ArrayWrapper<CarWrapper> cars = server.GetCars();
-    for (int i = 0; i < cars.Count(); i++) {
-        CarWrapper car = cars.Get(i);
-        if (!car) continue;
-
-        if (car.GetAttachedPickup().IsNull()) {
-            std::string command = "tweak item " + currentRoundItem;
-            cvarManager->executeCommand(command);
-        }
-    }
+    currentGravity = -650.0f;
+    currentRandomItemIndex = 1;
+    cvarManager->executeCommand("sv_soccar_gravity -650", false);
 }
