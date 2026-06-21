@@ -1,40 +1,45 @@
-#include "YourPluginName.h"
-#include <random>
-#include <vector>
+#pragma once
 
-BAKKESMOD_PLUGIN(YourPluginName, "Random Rumble Round Plugin", "1.0", PLUGINTYPE_SERVER)
+#include "bakkesmod/plugin/bakkesmodplugin.h"
+#include "bakkesmod/plugin/pluginwindow.h"
+#include "bakkesmod/plugin/PluginSettingsWindow.h"
+#include "version.h"
 
-void YourPluginName::onLoad()
+constexpr auto plugin_version = stringify(VERSION_MAJOR) "." stringify(VERSION_MINOR) "." stringify(VERSION_PATCH) "." stringify(VERSION_BUILD);
+
+class RLDisasters : public BakkesModPlugin::BakkesModPluginID
 {
-    gameWrapper->HookEvent("TAGame.GameEvent_Soccar_TA.EventPreCountdown", 
-        std::bind(&YourPluginName::OnRoundStart, this, std::placeholders::_1));
-}
+private:
+    bool pluginEnabled = false;
+    float currentGravity = -650.0f;
+    std::string currentRoundItem = "Spikes";
+    bool isMatchRunning = false;
 
-void YourPluginName::onUnload()
-{
-}
-
-void YourPluginName::OnRoundStart(std::string eventName)
-{
-    std::vector<std::string> rumbleItems = {
-        "SpecialPickup_BallFreeze_TA",
-        "SpecialPickup_BallGrapple_TA",
-        "SpecialPickup_BallLasso_TA",
-        "SpecialPickup_BallSpring_TA",
-        "SpecialPickup_Swapper_TA",
-        "SpecialPickup_Tornado_TA",
-        "SpecialPickup_Bumper_TA",
-        "SpecialPickup_BoostModifier_TA",
-        "SpecialPickup_BallVelcro_TA",
-        "SpecialPickup_StrongHit_TA"
+    const std::vector<std::string> rumbleItems = {
+        "GrapplingHook",
+        "Spikes",
+        "Magnet",
+        "Freeze",
+        "Boot",
+        "Haymaker",
+        "Tornado",
+        "Swapper",
+        "Disruptor",
+        "PowerHitter",
+        "Plunger"
     };
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, rumbleItems.size() - 1);
-    std::string chosenItem = rumbleItems[dis(gen)];
+public:
+    virtual void onLoad() override;
+    virtual void onUnload() override;
 
-    gameWrapper->ExecuteUnrealCommand("ta giveitem " + chosenItem);
-    
-    cvarManager->log("Selected random Rumble item for this round: " + chosenItem);
-}
+    void OnMatchStart(std::string eventName);
+    void OnMatchEnd(std::string eventName);
+    void OnGoalScored(std::string eventName);
+    void OnTick(std::string eventName);
+
+    void ResetMatchState();
+    void ApplyGravitySettings();
+    void SelectNextRoundItem();
+    void EnforcePersistentItem();
+};
