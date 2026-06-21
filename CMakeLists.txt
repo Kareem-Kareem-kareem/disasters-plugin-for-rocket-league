@@ -66,4 +66,3 @@ if(DEFINED ENV{APPDATA} AND NOT DEFINED ENV{CI})
     )
     message(STATUS "Will also copy built DLL + .set to your local BakkesMod folders")
 endif()
-
