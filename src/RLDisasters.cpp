@@ -2,6 +2,7 @@
 #include "bakkesmod/wrappers/gamewrapper.h"
 #include "bakkesmod/wrappers/gameobject/carwrapper.h"
 #include "bakkesmod/wrappers/gameobject/ballwrapper.h"
+#include "bakkesmod/wrappers/gameobject/goalwrapper.h"
 #include "bakkesmod/wrappers/gameevent/serverwrapper.h"
 #include <algorithm>
 #include <cstdlib>
@@ -9,8 +10,11 @@
 // pluginType 0 = no mode restriction. Growing Ball / Low Gravity Goals
 // only DO anything when you are the host: Freeplay, Custom Training, or
 // a BakkesMod LAN match started with "host". Persistent Rumble uses the
-// sv_freeplay_rumble_enable_* cvars, which are freeplay-specific by name,
-// so that one is freeplay only.
+// sv_freeplay_rumble_enable_* cvars — these are freeplay-named, and it's
+// genuinely unconfirmed whether they do anything in a LAN match. The
+// "Force Persistent Rumble" button lets you test that directly: it sends
+// the same command Persistent Rumble would, with a console log either
+// way, so you can see for yourself rather than take it on faith.
 BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters", "1.0", 0)
 
 // ════════════════════════════════════════════════════════════════════
@@ -54,6 +58,11 @@ void RLDisasters::onLoad()
             }
         });
 
+    cvarManager->registerCvar("disasters_gravityPerGoal", "100", "How much gravity weakens per goal (units toward zero)", true, true, 10, true, 400)
+        .addOnValueChanged([this](std::string, CVarWrapper cvar) {
+            gravityStepPerGoal = cvar.getFloatValue();
+        });
+
     cvarManager->registerNotifier("disasters_resetall", [this](std::vector<std::string>) {
         cvarManager->getCvar("disasters_growingBall").setValue(0);
         cvarManager->getCvar("disasters_persistentRumble").setValue(0);
@@ -83,6 +92,57 @@ void RLDisasters::onLoad()
         ball.SetBallScale(4.0f);
         cvarManager->log("RLDisasters TEST: called SetBallScale(4.0) — look at the ball NOW");
     }, "DIAGNOSTIC: forces ball to 4x scale instantly", PERMISSION_ALL);
+
+    // DIAGNOSTIC ONLY: instantly forces a random rumble type on, the same
+    // way Persistent Rumble would on a goal, but on demand. Use this in a
+    // LAN match to directly test whether sv_freeplay_rumble_enable_* does
+    // anything outside Freeplay — something neither of us could confirm
+    // from documentation alone.
+    cvarManager->registerNotifier("disasters_forcerumble", [this](std::vector<std::string>) {
+        if (!gameWrapper->IsInGame()) {
+            cvarManager->log("RLDisasters TEST: not in game, aborting");
+            return;
+        }
+        PickNewRumble();
+        cvarManager->log("RLDisasters TEST: forced a random rumble ability ON — wait a few seconds and look near the ball");
+    }, "DIAGNOSTIC: instantly forces a random rumble ability on", PERMISSION_ALL);
+
+    // DIAGNOSTIC ONLY: tries to scale the goal's WORLD EXTENT (its
+    // detection/collision box) to 3x. IMPORTANT: GoalWrapper does not
+    // inherit from ActorWrapper in this SDK, so it has no visual mesh
+    // scale function at all — only this invisible detection-box size.
+    // This button exists so you can confirm with your own eyes that nothing
+    // visually changes, rather than just take my word for the limitation.
+    cvarManager->registerNotifier("disasters_testgoalsize", [this](std::vector<std::string>) {
+        if (!gameWrapper->IsInGame()) {
+            cvarManager->log("RLDisasters TEST: not in game, aborting");
+            return;
+        }
+        ServerWrapper server = gameWrapper->GetCurrentGameState();
+        if (server.IsNull()) {
+            cvarManager->log("RLDisasters TEST: server is null, aborting");
+            return;
+        }
+        ArrayWrapper<GoalWrapper> goals = server.GetGoals();
+        if (goals.Count() == 0) {
+            cvarManager->log("RLDisasters TEST: no goals found, aborting");
+            return;
+        }
+        for (int i = 0; i < goals.Count(); i++) {
+            GoalWrapper goal = goals.Get(i);
+            if (goal.IsNull()) continue;
+            Vector extent = goal.GetWorldExtent();
+            goal.SetWorldExtent(Vector(extent.X * 3.0f, extent.Y * 3.0f, extent.Z * 3.0f));
+        }
+        cvarManager->log("RLDisasters TEST: tripled goal WorldExtent (invisible detection box only — expect NO visual change, this is the known SDK limitation)");
+    }, "DIAGNOSTIC: triples goal detection-box size (no visual mesh scale exists in this SDK)", PERMISSION_ALL);
+
+    // DIAGNOSTIC ONLY: there is no field/arena scale function anywhere in
+    // this SDK at all — not even an invisible one like goals have. This
+    // logs that fact clearly rather than silently doing nothing.
+    cvarManager->registerNotifier("disasters_testfieldsize", [this](std::vector<std::string>) {
+        cvarManager->log("RLDisasters TEST: there is no field/arena scale function in the BakkesMod SDK — this would require a custom map built at a different scale, not something a plugin can do at runtime.");
+    }, "DIAGNOSTIC: explains why field scaling isn't possible via plugin", PERMISSION_ALL);
 
     HookEvents();
     cvarManager->log("RLDisasters: loaded");
@@ -144,7 +204,18 @@ void RLDisasters::OnGoalScored(std::string)
     if (!gameWrapper->IsInGame()) return;
     goalsScored++;
 
-    if (growingBallOn)      GrowBall();
+    // IMPORTANT: this fires the instant the ball explodes — at that exact
+    // moment the old ball object is about to be destroyed and replaced
+    // with a freshly spawned one. Calling SetBallScale right here lands
+    // on the dying ball, not the new one, so the scale never visibly
+    // sticks. We delay slightly so GrowBall runs after the new ball
+    // exists. Gravity/rumble aren't tied to a specific object instance,
+    // so they don't have this problem and can run immediately.
+    if (growingBallOn) {
+        gameWrapper->SetTimeout([this](GameWrapper*) {
+            GrowBall();
+        }, 0.3f);
+    }
     if (persistentRumbleOn) PickNewRumble();
     if (lowGravityGoalsOn)  ApplyLowGravityGoals();
 }
@@ -198,13 +269,13 @@ void RLDisasters::PickNewRumble()
 // ════════════════════════════════════════════════════════════════════
 //  Disaster: Low Gravity Goals
 //  Gravity is negative (default -650). "Weaker" means closer to zero,
-//  i.e. less downward pull, i.e. floatier. Each goal moves gravity 100
-//  units toward zero, capped at -150 so it never flips sign or goes to
-//  true zero-g.
+//  i.e. less downward pull, i.e. floatier. Each goal moves gravity
+//  toward zero by gravityStepPerGoal (adjustable, default 100), capped
+//  at -150 so it never flips sign or goes to true zero-g.
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::ApplyLowGravityGoals()
 {
-    float nextGravity = currentGravity + 100.0f;
+    float nextGravity = currentGravity + gravityStepPerGoal;
     float cap = -150.0f;
     currentGravity = std::min<float>(nextGravity, cap);
     cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(currentGravity), false);
