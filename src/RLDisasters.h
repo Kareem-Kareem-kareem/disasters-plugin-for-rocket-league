@@ -18,10 +18,8 @@ private:
     float currentGravity     = -650.0f;
     float gravityStepPerGoal = 100.0f;
     int   lastPhysicsFrame   = -1;
-    bool  lastTickHadPickup  = false;
     
-    // Tracks the preferred persistent item command string (e.g., "boostff")
-    std::string persistentItemCmd = "boostff"; 
+    std::string persistentItemCmd = "spikes"; 
 
     void HookEvents();
     void UnhookEvents();
@@ -32,7 +30,7 @@ private:
     void OnTick(std::string eventName);
 
     void GrowBall();
-    void TickRumbleTracking();
+    void UpdateRumbleCVars();
     void ApplyLowGravityGoals();
 
     void ResetAll();
