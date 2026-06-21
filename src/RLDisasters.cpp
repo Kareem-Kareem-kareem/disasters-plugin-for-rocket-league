@@ -141,7 +141,7 @@ void RLDisasters::OnGoalScored(std::string)
     if (lowGravityGoalsOn) ApplyLowGravityGoals();
 }
 
-void RLDisasters::OnKickoffStart(std::string)
+void RLDisasters::OnKickoffStart(std::string eventName)
 {
     if (!gameWrapper->IsInGame() || !growingBallOn) return;
 
