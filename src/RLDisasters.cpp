@@ -139,7 +139,7 @@ void RLDisasters::GrowBall()
     BallWrapper ball = server.GetBall();
     if (ball.IsNull()) return;
 
-    ballScale = std::min(ballScale + 0.08f, 2.5f);
+    ballScale = std::min<float>(ballScale + 0.08f, 2.5f);
     ball.SetBallScale(ballScale);
 }
 
@@ -172,7 +172,9 @@ void RLDisasters::PickNewRumble()
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::ApplyLowGravityGoals()
 {
-    currentGravity = std::min(currentGravity + 60.0f, -150.0f);
+    float nextGravity = currentGravity + 60.0f;
+    float cap = -150.0f;
+    currentGravity = std::min<float>(nextGravity, cap);
     cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(currentGravity), false);
 }
 
