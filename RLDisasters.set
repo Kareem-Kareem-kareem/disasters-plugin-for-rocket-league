@@ -5,4 +5,13 @@ RL Disasters
 1|Persistent Rumble (one random ability active, swaps on goal)|disasters_persistentRumble
 1|Low Gravity Goals (gravity weakens each goal, gets floatier)|disasters_lowGravityGoals
 8
+9|Gravity per goal (units toward zero). Type a number in F6 console, e.g: disasters_gravityPerGoal 150
+9|Current value is shown by typing: disasters_gravityPerGoal
+8
+9|--- Diagnostics: test things directly, no goal needed ---
+0|Test Ball Size (4x)|disasters_testballsize
+0|Force Persistent Rumble (random ability ON now)|disasters_forcerumble
+0|Test Goal Size (detection box only, expect NO visual change)|disasters_testgoalsize
+0|Test Field Size (explains why this isn't possible)|disasters_testfieldsize
+8
 0|Reset All Disasters|disasters_resetall
