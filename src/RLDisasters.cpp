@@ -61,6 +61,29 @@ void RLDisasters::onLoad()
         ResetAll();
     }, "Turns off every RL Disasters effect and resets state", PERMISSION_ALL);
 
+    // DIAGNOSTIC ONLY: jumps the ball to an unmistakable 4x size instantly,
+    // bypassing goals/timers entirely, so we can tell whether SetBallScale
+    // does anything at all. Type "disasters_testballsize" in the F6
+    // console while in Freeplay. Logs success/failure either way.
+    cvarManager->registerNotifier("disasters_testballsize", [this](std::vector<std::string>) {
+        if (!gameWrapper->IsInGame()) {
+            cvarManager->log("RLDisasters TEST: not in game, aborting");
+            return;
+        }
+        ServerWrapper server = gameWrapper->GetCurrentGameState();
+        if (server.IsNull()) {
+            cvarManager->log("RLDisasters TEST: server is null, aborting");
+            return;
+        }
+        BallWrapper ball = server.GetBall();
+        if (ball.IsNull()) {
+            cvarManager->log("RLDisasters TEST: ball is null, aborting");
+            return;
+        }
+        ball.SetBallScale(4.0f);
+        cvarManager->log("RLDisasters TEST: called SetBallScale(4.0) — look at the ball NOW");
+    }, "DIAGNOSTIC: forces ball to 4x scale instantly", PERMISSION_ALL);
+
     HookEvents();
     cvarManager->log("RLDisasters: loaded");
 }
@@ -103,8 +126,17 @@ void RLDisasters::UnhookEvents()
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::OnMatchStarted(std::string)
 {
-    ResetAll();
-    if (persistentRumbleOn) PickNewRumble();
+    // NOTE: this fires on every round restart, including right after a
+    // goal in Freeplay/Soccar — NOT just when a fresh match begins. We
+    // deliberately do NOT call ResetAll() here anymore, since that was
+    // wiping ball scale / gravity progress immediately after every goal,
+    // making Growing Ball and Low Gravity Goals look like they did
+    // nothing. Progress now only resets via the explicit Reset All
+    // button/notifier, or when the plugin loads/unloads.
+    if (persistentRumbleOn && goalsScored == 0) {
+        // only pick an initial rumble type on a genuinely fresh start
+        PickNewRumble();
+    }
 }
 
 void RLDisasters::OnGoalScored(std::string)
@@ -166,13 +198,13 @@ void RLDisasters::PickNewRumble()
 // ════════════════════════════════════════════════════════════════════
 //  Disaster: Low Gravity Goals
 //  Gravity is negative (default -650). "Weaker" means closer to zero,
-//  i.e. less downward pull, i.e. floatier. Each goal moves gravity 60
+//  i.e. less downward pull, i.e. floatier. Each goal moves gravity 100
 //  units toward zero, capped at -150 so it never flips sign or goes to
 //  true zero-g.
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::ApplyLowGravityGoals()
 {
-    float nextGravity = currentGravity + 60.0f;
+    float nextGravity = currentGravity + 100.0f;
     float cap = -150.0f;
     currentGravity = std::min<float>(nextGravity, cap);
     cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(currentGravity), false);
