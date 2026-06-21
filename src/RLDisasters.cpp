@@ -14,7 +14,7 @@ void RLDisasters::onLoad()
 {
     cvarManager->log("RLDisasters: loading");
 
-    cvarManager->registerCvar("disasters_growingBall", "0", "Ball grows +8% per goal, caps at 2.5x", true, true, 0, true, 1)
+    cvarManager->registerCvar("disasters_growingBall", "0", "Ball grows +8% per goal/respawn, caps at 2.5x", true, true, 0, true, 1)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             growingBallOn = cvar.getBoolValue();
             if (!growingBallOn) {
@@ -29,10 +29,15 @@ void RLDisasters::onLoad()
             }
         });
 
-    cvarManager->registerCvar("disasters_persistentRumble", "0", "Requires Rumble mutator: notifies you on the HUD log whenever you're holding (or not holding) a rumble item", true, true, 0, true, 1)
+    cvarManager->registerCvar("disasters_persistentRumble", "0", "Forces you to always hold your selected rumble item continuously", true, true, 0, true, 1)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             persistentRumbleOn = cvar.getBoolValue();
             lastTickHadPickup = false;
+        });
+
+    cvarManager->registerCvar("disasters_persistentRumbleItem", "boostff", "The rumble item to lock (boostff, grapplinghook, haymaker, plunger, spikes, swapper, tornado, etc.)", true, false, 0, false, 0)
+        .addOnValueChanged([this](std::string, CVarWrapper cvar) {
+            persistentItemCmd = cvar.getStringValue();
         });
 
     cvarManager->registerCvar("disasters_lowGravityGoals", "0", "Gravity gets weaker every goal scored, caps out floaty", true, true, 0, true, 1)
@@ -56,43 +61,6 @@ void RLDisasters::onLoad()
         ResetAll();
     }, "Turns off every RL Disasters effect and resets state", PERMISSION_ALL);
 
-    cvarManager->registerNotifier("disasters_testballsize", [this](std::vector<std::string>) {
-        if (!gameWrapper->IsInGame()) {
-            cvarManager->log("RLDisasters TEST: not in game, aborting");
-            return;
-        }
-        ServerWrapper server = gameWrapper->GetCurrentGameState();
-        if (server.IsNull()) {
-            cvarManager->log("RLDisasters TEST: server is null, aborting");
-            return;
-        }
-        BallWrapper ball = server.GetBall();
-        if (ball.IsNull()) {
-            cvarManager->log("RLDisasters TEST: ball is null, aborting");
-            return;
-        }
-        ball.SetBallScale(4.0f);
-        cvarManager->log("RLDisasters TEST: called SetBallScale(4.0) — look at the ball NOW");
-    }, "DIAGNOSTIC: forces ball to 4x scale instantly", PERMISSION_ALL);
-
-    cvarManager->registerNotifier("disasters_checkpickup", [this](std::vector<std::string>) {
-        if (!gameWrapper->IsInGame()) {
-            cvarManager->log("RLDisasters TEST: not in game, aborting");
-            return;
-        }
-        CarWrapper car = gameWrapper->GetLocalCar();
-        if (car.IsNull()) {
-            cvarManager->log("RLDisasters TEST: local car is null, aborting");
-            return;
-        }
-        auto pickup = car.GetAttachedPickup();
-        if (pickup.IsNull()) {
-            cvarManager->log("RLDisasters TEST: you are NOT currently holding a rumble item (requires Rumble mutator to be on to ever hold one)");
-        } else {
-            cvarManager->log("RLDisasters TEST: you ARE currently holding a rumble item right now");
-        }
-    }, "DIAGNOSTIC: reports if you're currently holding a rumble item", PERMISSION_ALL);
-
     HookEvents();
     cvarManager->log("RLDisasters: loaded");
 }
@@ -114,6 +82,9 @@ void RLDisasters::HookEvents()
     gameWrapper->HookEvent("Function TAGame.Ball_TA.Explode",
         [this](std::string e) { OnGoalScored(e); });
 
+    gameWrapper->HookEvent("Function GameEvent_Soccar_TA.Active.OnCarSpawned",
+        [this](std::string e) { OnCarSpawned(e); });
+
     gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput",
         [this](std::string e) { OnTick(e); });
 }
@@ -122,11 +93,12 @@ void RLDisasters::UnhookEvents()
 {
     gameWrapper->UnhookEvent("Function GameEvent_Soccar_TA.Active.StartRound");
     gameWrapper->UnhookEvent("Function TAGame.Ball_TA.Explode");
+    gameWrapper->UnhookEvent("Function GameEvent_Soccar_TA.Active.OnCarSpawned");
     gameWrapper->UnhookEvent("Function TAGame.Car_TA.SetVehicleInput");
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Match lifecycle
+//  Match lifecycle / Events
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::OnMatchStarted(std::string)
 {
@@ -144,6 +116,16 @@ void RLDisasters::OnGoalScored(std::string)
         }, 0.3f);
     }
     if (lowGravityGoalsOn) ApplyLowGravityGoals();
+}
+
+void RLDisasters::OnCarSpawned(std::string)
+{
+    if (!gameWrapper->IsInGame() || !growingBallOn) return;
+
+    // Grow the ball slightly delayed to ensure the respawn state transition completes smoothly
+    gameWrapper->SetTimeout([this](GameWrapper*) {
+        GrowBall();
+    }, 0.2f);
 }
 
 void RLDisasters::OnTick(std::string)
@@ -183,12 +165,11 @@ void RLDisasters::TickRumbleTracking()
     auto pickup = car.GetAttachedPickup();
     bool hasPickupNow = !pickup.IsNull();
 
-    if (hasPickupNow != lastTickHadPickup) {
-        if (hasPickupNow) {
-            cvarManager->log("RLDisasters: you picked up a rumble item");
-        } else {
-            cvarManager->log("RLDisasters: your rumble item is gone (used or expired)");
-        }
+    // If the player doesn't have an item equipped, force grant the configured item instantly
+    if (!hasPickupNow) {
+        cvarManager->executeCommand("give " + persistentItemCmd, false);
+        lastTickHadPickup = true;
+    } else {
         lastTickHadPickup = hasPickupNow;
     }
 }
