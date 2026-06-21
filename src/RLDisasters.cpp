@@ -7,14 +7,11 @@
 
 BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters", "1.0", 0)
 
-// ════════════════════════════════════════════════════════════════════
-//  onLoad / onUnload
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::onLoad()
 {
     cvarManager->log("RLDisasters: loading");
 
-    cvarManager->registerCvar("disasters_growingBall", "0", "Ball grows +8% per goal/respawn, caps at 2.5x", true, true, 0, true, 1)
+    cvarManager->registerCvar("disasters_growingBall", "0", "Ball grows +8% per goal/respawn/kickoff, caps at 2.5x", true, true, 0, true, 1)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             growingBallOn = cvar.getBoolValue();
             if (!growingBallOn) {
@@ -29,16 +26,26 @@ void RLDisasters::onLoad()
             }
         });
 
-    cvarManager->registerCvar("disasters_persistentRumble", "0", "Forces the item pool to always give you the selected rumble item", true, true, 0, true, 1)
+    cvarManager->registerCvar("disasters_persistentRumble", "0", "Forces you to always hold your selected rumble item continuously", true, true, 0, true, 1)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             persistentRumbleOn = cvar.getBoolValue();
-            UpdateRumbleCVars();
         });
 
-    cvarManager->registerCvar("disasters_persistentRumbleItem", "spikes", "The item to lock (spikes, plunger, grapple, boot, freeze, punch, swapper, tornado, magnet, powerhit, disruptor)", true, false, 0, false, 0)
+    cvarManager->registerCvar("disasters_persistentRumbleItem", "spikes", "The rumble item to lock", true, false, 0, false, 0)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
-            persistentItemCmd = cvar.getStringValue();
-            UpdateRumbleCVars();
+            std::string input = cvar.getStringValue();
+            if (input == "spikes") persistentItemCmd = "Spikes_TA";
+            else if (input == "plunger") persistentItemCmd = "Plunger_TA";
+            else if (input == "grapple" || input == "grapplinghook") persistentItemCmd = "GrapplingHook_TA";
+            else if (input == "boot" || input == "kick") persistentItemCmd = "Spring_TA";
+            else if (input == "freeze" || input == "freezer") persistentItemCmd = "Freeze_TA";
+            else if (input == "punch" || input == "haymaker") persistentItemCmd = "BallBrick_TA";
+            else if (input == "swapper") persistentItemCmd = "Swapper_TA";
+            else if (input == "tornado") persistentItemCmd = "Tornado_TA";
+            else if (input == "magnet") persistentItemCmd = "Magnet_TA";
+            else if (input == "powerhit") persistentItemCmd = "SuperBoost_TA";
+            else if (input == "disruptor" || input == "boostff") persistentItemCmd = "BoosterPlayer_TA";
+            else persistentItemCmd = "Spikes_TA";
         });
 
     cvarManager->registerCvar("disasters_lowGravityGoals", "0", "Gravity gets weaker every goal scored, caps out floaty", true, true, 0, true, 1)
@@ -72,9 +79,6 @@ void RLDisasters::onUnload()
     ResetAll();
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Hooks
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::HookEvents()
 {
     gameWrapper->HookEvent("Function GameEvent_Soccar_TA.Active.StartRound",
@@ -86,6 +90,9 @@ void RLDisasters::HookEvents()
     gameWrapper->HookEvent("Function GameEvent_Soccar_TA.Active.OnCarSpawned",
         [this](std::string e) { OnCarSpawned(e); });
 
+    gameWrapper->HookEvent("Function TAGame.GameEvent_Soccar_TA.OnKickoffStart",
+        [this](std::string e) { OnKickoffStart(e); });
+
     gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput",
         [this](std::string e) { OnTick(e); });
 }
@@ -95,15 +102,12 @@ void RLDisasters::UnhookEvents()
     gameWrapper->UnhookEvent("Function GameEvent_Soccar_TA.Active.StartRound");
     gameWrapper->UnhookEvent("Function TAGame.Ball_TA.Explode");
     gameWrapper->UnhookEvent("Function GameEvent_Soccar_TA.Active.OnCarSpawned");
+    gameWrapper->UnhookEvent("Function TAGame.GameEvent_Soccar_TA.OnKickoffStart");
     gameWrapper->UnhookEvent("Function TAGame.Car_TA.SetVehicleInput");
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Match lifecycle / Events
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::OnMatchStarted(std::string)
 {
-    UpdateRumbleCVars();
 }
 
 void RLDisasters::OnGoalScored(std::string)
@@ -123,10 +127,18 @@ void RLDisasters::OnCarSpawned(std::string)
 {
     if (!gameWrapper->IsInGame() || !growingBallOn) return;
 
-    // Triggers when a player spawns or respawns after a demolition
     gameWrapper->SetTimeout([this](GameWrapper*) {
         GrowBall();
     }, 0.2f);
+}
+
+void RLDisasters::OnKickoffStart(std::string)
+{
+    if (!gameWrapper->IsInGame() || !growingBallOn) return;
+
+    gameWrapper->SetTimeout([this](GameWrapper*) {
+        GrowBall();
+    }, 0.1f);
 }
 
 void RLDisasters::OnTick(std::string)
@@ -136,11 +148,10 @@ void RLDisasters::OnTick(std::string)
     int frame = gameWrapper->GetEngine().GetPhysicsFrame();
     if (frame == lastPhysicsFrame) return;
     lastPhysicsFrame = frame;
+
+    if (persistentRumbleOn) GivePersistentItem();
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Growing Ball
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::GrowBall()
 {
     if (!gameWrapper->IsInGame()) return;
@@ -153,43 +164,17 @@ void RLDisasters::GrowBall()
     ball.SetBallScale(ballScale);
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Persistent Rumble
-// ════════════════════════════════════════════════════════════════════
-void RLDisasters::UpdateRumbleCVars()
+void RLDisasters::GivePersistentItem()
 {
-    // Reset all global item force locks back to normal behavior
-    cvarManager->executeCommand("sv_rumble_allspikes 0", false);
-    cvarManager->executeCommand("sv_rumble_allplungers 0", false);
-    cvarManager->executeCommand("sv_rumble_allgrapplinghooks 0", false);
-    cvarManager->executeCommand("sv_rumble_allboots 0", false);
-    cvarManager->executeCommand("sv_rumble_allfreezers 0", false);
-    cvarManager->executeCommand("sv_rumble_allhaymakers 0", false);
-    cvarManager->executeCommand("sv_rumble_allswappers 0", false);
-    cvarManager->executeCommand("sv_rumble_alltornados 0", false);
-    cvarManager->executeCommand("sv_rumble_allmagnets 0", false);
-    cvarManager->executeCommand("sv_rumble_allpowerhits 0", false);
-    cvarManager->executeCommand("sv_rumble_alldisruptors 0", false);
+    CarWrapper car = gameWrapper->GetLocalCar();
+    if (car.IsNull()) return;
 
-    // If persistent rumble is enabled, lock the item pool down to your selection
-    if (persistentRumbleOn) {
-        if (persistentItemCmd == "spikes") cvarManager->executeCommand("sv_rumble_allspikes 1", false);
-        else if (persistentItemCmd == "plunger") cvarManager->executeCommand("sv_rumble_allplungers 1", false);
-        else if (persistentItemCmd == "grapple" || persistentItemCmd == "grapplinghook") cvarManager->executeCommand("sv_rumble_allgrapplinghooks 1", false);
-        else if (persistentItemCmd == "boot" || persistentItemCmd == "kick") cvarManager->executeCommand("sv_rumble_allboots 1", false);
-        else if (persistentItemCmd == "freeze" || persistentItemCmd == "freezer") cvarManager->executeCommand("sv_rumble_allfreezers 1", false);
-        else if (persistentItemCmd == "punch" || persistentItemCmd == "haymaker") cvarManager->executeCommand("sv_rumble_allhaymakers 1", false);
-        else if (persistentItemCmd == "swapper") cvarManager->executeCommand("sv_rumble_allswappers 1", false);
-        else if (persistentItemCmd == "tornado") cvarManager->executeCommand("sv_rumble_alltornados 1", false);
-        else if (persistentItemCmd == "magnet") cvarManager->executeCommand("sv_rumble_allmagnets 1", false);
-        else if (persistentItemCmd == "powerhit") cvarManager->executeCommand("sv_rumble_allpowerhits 1", false);
-        else if (persistentItemCmd == "disruptor" || persistentItemCmd == "boostff") cvarManager->executeCommand("sv_rumble_alldisruptors 1", false);
+    auto pickup = car.GetAttachedPickup();
+    if (pickup.IsNull()) {
+        gameWrapper->ExecuteUnrealCommand("cheat giveitem " + persistentItemCmd);
     }
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Disaster: Low Gravity Goals
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::ApplyLowGravityGoals()
 {
     float nextGravity = currentGravity + gravityStepPerGoal;
@@ -198,9 +183,6 @@ void RLDisasters::ApplyLowGravityGoals()
     cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(currentGravity), false);
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  Reset
-// ════════════════════════════════════════════════════════════════════
 void RLDisasters::ResetAll()
 {
     goalsScored      = 0;
@@ -208,7 +190,6 @@ void RLDisasters::ResetAll()
     currentGravity   = -650.0f;
 
     cvarManager->executeCommand("sv_soccar_gravity -650", false);
-    UpdateRumbleCVars();
 
     if (!gameWrapper->IsInGame()) return;
     ServerWrapper server = gameWrapper->GetCurrentGameState();
