@@ -1,7 +1,6 @@
 #pragma once
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include <string>
-#include <vector>
 
 class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin
 {
@@ -14,18 +13,12 @@ private:
     bool persistentRumbleOn = false;
     bool lowGravityGoalsOn  = false;
 
-    int   goalsScored      = 0;
-    float ballScale        = 1.0f;
-    float currentGravity   = -650.0f;
+    int   goalsScored        = 0;
+    float ballScale          = 1.0f;
+    float currentGravity     = -650.0f;
     float gravityStepPerGoal = 100.0f;
-    int   lastPhysicsFrame = -1;
-
-    // the 11 real freeplay rumble item cvars (confirmed via BakkesMod's
-    // own "Undocumented console commands" wiki page)
-    std::vector<std::string> rumbleAbilities = {
-        "boot", "disruptor", "freezer", "grapplinghook", "haymaker",
-        "magnetizer", "plunger", "powerhitter", "spike", "swapper", "tornado"
-    };
+    int   lastPhysicsFrame   = -1;
+    bool  lastTickHadPickup  = false;
 
     void HookEvents();
     void UnhookEvents();
@@ -35,8 +28,7 @@ private:
     void OnTick(std::string eventName);
 
     void GrowBall();
-    void DisableAllRumble();
-    void PickNewRumble();
+    void TickRumbleTracking();
     void ApplyLowGravityGoals();
 
     void ResetAll();
