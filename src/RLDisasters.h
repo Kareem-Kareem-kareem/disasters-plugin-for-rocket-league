@@ -1,31 +1,30 @@
-#pragma once
-#include "bakkesmod/plugin/bakkesmodplugin.h"
-#include <string>
+#include "RLDisasters.h"
+#include "bakkesmod/wrappers/gamewrapper.h"
+#include "bakkesmod/wrappers/gameobject/carwrapper.h"
+#include "bakkesmod/wrappers/gameevent/serverwrapper.h"
+#include "bakkesmod/wrappers/GameObject/RumbleComponent/BallFreezePickup.h"
 
-class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin
+void RLDisasters::TickRumbleTracking()
 {
-public:
-    void onLoad() override;
-    void onUnload() override;
+    CarWrapper car = gameWrapper->GetLocalCar();
+    if (car.IsNull()) return;
 
-private:
-    bool persistentRumbleOn = false;
-    bool lowGravityGoalsOn  = false;
+    // Retrieve the base rumble pickup component from the car
+    RumblePickupComponentWrapper pickup = car.GetAttachedPickup();
+    if (pickup.IsNull()) return;
 
-    int   goalsScored        = 0;
-    float currentGravity     = -650.0f;
-    float gravityStepPerGoal = 100.0f;
-    int   lastPhysicsFrame   = -1;
+    // Check if the current item is exactly a BallFreezePickup type
+    if (pickup.IsA(BallFreezePickup::StaticClass())) 
+    {
+        // Safe downcast to access specific Freeze properties if needed
+        BallFreezePickup freezeItem = BallFreezePickup(pickup.memory_address);
+        if (freezeItem.IsNull()) return;
 
-    void HookEvents();
-    void UnhookEvents();
-
-    void OnMatchStarted(std::string eventName);
-    void OnGoalScored(std::string eventName);
-    void OnTick(std::string eventName);
-
-    void TickRumbleTracking();
-    void ApplyLowGravityGoals();
-
-    void ResetAll();
-};
+        // If the item is ready and not currently active, force execution
+        if (!freezeItem.GetbIsActive()) 
+        {
+            freezeItem.Activate();
+            cvarManager->log("RLDisasters: Forcefully activated Ball Freeze component.");
+        }
+    }
+}
