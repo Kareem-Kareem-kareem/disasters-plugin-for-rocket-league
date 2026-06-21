@@ -17,6 +17,7 @@ private:
     int   goalsScored      = 0;
     float ballScale        = 1.0f;
     float currentGravity   = -650.0f;
+    float gravityStepPerGoal = 100.0f;
     int   lastPhysicsFrame = -1;
 
     // the 11 real freeplay rumble item cvars (confirmed via BakkesMod's
