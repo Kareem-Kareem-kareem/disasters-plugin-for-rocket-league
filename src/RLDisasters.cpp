@@ -29,15 +29,16 @@ void RLDisasters::onLoad()
             }
         });
 
-    cvarManager->registerCvar("disasters_persistentRumble", "0", "Forces you to always hold your selected rumble item continuously", true, true, 0, true, 1)
+    cvarManager->registerCvar("disasters_persistentRumble", "0", "Forces the item pool to always give you the selected rumble item", true, true, 0, true, 1)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             persistentRumbleOn = cvar.getBoolValue();
-            lastTickHadPickup = false;
+            UpdateRumbleCVars();
         });
 
-    cvarManager->registerCvar("disasters_persistentRumbleItem", "boostff", "The rumble item to lock (boostff, grapplinghook, haymaker, plunger, spikes, swapper, tornado, etc.)", true, false, 0, false, 0)
+    cvarManager->registerCvar("disasters_persistentRumbleItem", "spikes", "The item to lock (spikes, plunger, grapple, boot, freeze, punch, swapper, tornado, magnet, powerhit, disruptor)", true, false, 0, false, 0)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             persistentItemCmd = cvar.getStringValue();
+            UpdateRumbleCVars();
         });
 
     cvarManager->registerCvar("disasters_lowGravityGoals", "0", "Gravity gets weaker every goal scored, caps out floaty", true, true, 0, true, 1)
@@ -102,7 +103,7 @@ void RLDisasters::UnhookEvents()
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::OnMatchStarted(std::string)
 {
-    lastTickHadPickup = false;
+    UpdateRumbleCVars();
 }
 
 void RLDisasters::OnGoalScored(std::string)
@@ -122,7 +123,7 @@ void RLDisasters::OnCarSpawned(std::string)
 {
     if (!gameWrapper->IsInGame() || !growingBallOn) return;
 
-    // Grow the ball slightly delayed to ensure the respawn state transition completes smoothly
+    // Triggers when a player spawns or respawns after a demolition
     gameWrapper->SetTimeout([this](GameWrapper*) {
         GrowBall();
     }, 0.2f);
@@ -135,8 +136,6 @@ void RLDisasters::OnTick(std::string)
     int frame = gameWrapper->GetEngine().GetPhysicsFrame();
     if (frame == lastPhysicsFrame) return;
     lastPhysicsFrame = frame;
-
-    if (persistentRumbleOn) TickRumbleTracking();
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -157,20 +156,34 @@ void RLDisasters::GrowBall()
 // ════════════════════════════════════════════════════════════════════
 //  Disaster: Persistent Rumble
 // ════════════════════════════════════════════════════════════════════
-void RLDisasters::TickRumbleTracking()
+void RLDisasters::UpdateRumbleCVars()
 {
-    CarWrapper car = gameWrapper->GetLocalCar();
-    if (car.IsNull()) return;
+    // Reset all global item force locks back to normal behavior
+    cvarManager->executeCommand("sv_rumble_allspikes 0", false);
+    cvarManager->executeCommand("sv_rumble_allplungers 0", false);
+    cvarManager->executeCommand("sv_rumble_allgrapplinghooks 0", false);
+    cvarManager->executeCommand("sv_rumble_allboots 0", false);
+    cvarManager->executeCommand("sv_rumble_allfreezers 0", false);
+    cvarManager->executeCommand("sv_rumble_allhaymakers 0", false);
+    cvarManager->executeCommand("sv_rumble_allswappers 0", false);
+    cvarManager->executeCommand("sv_rumble_alltornados 0", false);
+    cvarManager->executeCommand("sv_rumble_allmagnets 0", false);
+    cvarManager->executeCommand("sv_rumble_allpowerhits 0", false);
+    cvarManager->executeCommand("sv_rumble_alldisruptors 0", false);
 
-    auto pickup = car.GetAttachedPickup();
-    bool hasPickupNow = !pickup.IsNull();
-
-    // If the player doesn't have an item equipped, force grant the configured item instantly
-    if (!hasPickupNow) {
-        cvarManager->executeCommand("give " + persistentItemCmd, false);
-        lastTickHadPickup = true;
-    } else {
-        lastTickHadPickup = hasPickupNow;
+    // If persistent rumble is enabled, lock the item pool down to your selection
+    if (persistentRumbleOn) {
+        if (persistentItemCmd == "spikes") cvarManager->executeCommand("sv_rumble_allspikes 1", false);
+        else if (persistentItemCmd == "plunger") cvarManager->executeCommand("sv_rumble_allplungers 1", false);
+        else if (persistentItemCmd == "grapple" || persistentItemCmd == "grapplinghook") cvarManager->executeCommand("sv_rumble_allgrapplinghooks 1", false);
+        else if (persistentItemCmd == "boot" || persistentItemCmd == "kick") cvarManager->executeCommand("sv_rumble_allboots 1", false);
+        else if (persistentItemCmd == "freeze" || persistentItemCmd == "freezer") cvarManager->executeCommand("sv_rumble_allfreezers 1", false);
+        else if (persistentItemCmd == "punch" || persistentItemCmd == "haymaker") cvarManager->executeCommand("sv_rumble_allhaymakers 1", false);
+        else if (persistentItemCmd == "swapper") cvarManager->executeCommand("sv_rumble_allswappers 1", false);
+        else if (persistentItemCmd == "tornado") cvarManager->executeCommand("sv_rumble_alltornados 1", false);
+        else if (persistentItemCmd == "magnet") cvarManager->executeCommand("sv_rumble_allmagnets 1", false);
+        else if (persistentItemCmd == "powerhit") cvarManager->executeCommand("sv_rumble_allpowerhits 1", false);
+        else if (persistentItemCmd == "disruptor" || persistentItemCmd == "boostff") cvarManager->executeCommand("sv_rumble_alldisruptors 1", false);
     }
 }
 
@@ -193,9 +206,9 @@ void RLDisasters::ResetAll()
     goalsScored      = 0;
     ballScale        = 1.0f;
     currentGravity   = -650.0f;
-    lastTickHadPickup = false;
 
     cvarManager->executeCommand("sv_soccar_gravity -650", false);
+    UpdateRumbleCVars();
 
     if (!gameWrapper->IsInGame()) return;
     ServerWrapper server = gameWrapper->GetCurrentGameState();
