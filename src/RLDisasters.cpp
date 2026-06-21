@@ -2,19 +2,29 @@
 #include "bakkesmod/wrappers/gamewrapper.h"
 #include "bakkesmod/wrappers/gameobject/carwrapper.h"
 #include "bakkesmod/wrappers/gameobject/ballwrapper.h"
-#include "bakkesmod/wrappers/gameobject/goalwrapper.h"
 #include "bakkesmod/wrappers/gameevent/serverwrapper.h"
 #include <algorithm>
-#include <cstdlib>
 
 // pluginType 0 = no mode restriction. Growing Ball / Low Gravity Goals
 // only DO anything when you are the host: Freeplay, Custom Training, or
-// a BakkesMod LAN match started with "host". Persistent Rumble uses the
-// sv_freeplay_rumble_enable_* cvars — these are freeplay-named, and it's
-// genuinely unconfirmed whether they do anything in a LAN match. The
-// "Force Persistent Rumble" button lets you test that directly: it sends
-// the same command Persistent Rumble would, with a console log either
-// way, so you can see for yourself rather than take it on faith.
+// a BakkesMod LAN match started with "host".
+//
+// Persistent Rumble: real rumble items only exist when the match itself
+// is hosted with the RUMBLE MUTATOR turned on (selected in the match
+// setup screen, same as picking any other mutator). This is confirmed by
+// a real published plugin ("Custom Rumble" on bakkesplugins.com, "Only
+// works in LAN matches... Must be used with the default rumble mutator").
+// The sv_freeplay_rumble_enable_* cvars used in an earlier version of
+// this plugin were wrong — those only affect a separate Freeplay-only
+// Rumble TRAINING mode, unrelated to LAN matches, which is why they did
+// nothing for LAN testing. With Rumble mutator on, the game spawns real
+// pickup items on its own; this plugin detects via CarWrapper's attached
+// pickup (the same approach used by a real, multiplayer-tested plugin,
+// ZpeedTube/rumble-recharge on GitHub) when you have no pickup, and once
+// you pick one up it tracks that you're holding something. There is no
+// SDK function to spawn a brand-new pickup or force a specific ability
+// from nothing — every wrapper class only wraps objects the game itself
+// already created.
 BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters", "1.0", 0)
 
 // ════════════════════════════════════════════════════════════════════
@@ -39,14 +49,10 @@ void RLDisasters::onLoad()
             }
         });
 
-    cvarManager->registerCvar("disasters_persistentRumble", "0", "One random rumble ability is always active, swaps when someone scores", true, true, 0, true, 1)
+    cvarManager->registerCvar("disasters_persistentRumble", "0", "Requires Rumble mutator: notifies you on the HUD log whenever you're holding (or not holding) a rumble item", true, true, 0, true, 1)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             persistentRumbleOn = cvar.getBoolValue();
-            if (persistentRumbleOn) {
-                PickNewRumble();
-            } else {
-                DisableAllRumble();
-            }
+            lastTickHadPickup = false;
         });
 
     cvarManager->registerCvar("disasters_lowGravityGoals", "0", "Gravity gets weaker every goal scored, caps out floaty", true, true, 0, true, 1)
@@ -70,10 +76,9 @@ void RLDisasters::onLoad()
         ResetAll();
     }, "Turns off every RL Disasters effect and resets state", PERMISSION_ALL);
 
-    // DIAGNOSTIC ONLY: jumps the ball to an unmistakable 4x size instantly,
-    // bypassing goals/timers entirely, so we can tell whether SetBallScale
-    // does anything at all. Type "disasters_testballsize" in the F6
-    // console while in Freeplay. Logs success/failure either way.
+    // DIAGNOSTIC: jumps the ball to an unmistakable 4x size instantly,
+    // bypassing goals/timers entirely. Confirmed working — you've already
+    // verified the ball visibly grows when this runs.
     cvarManager->registerNotifier("disasters_testballsize", [this](std::vector<std::string>) {
         if (!gameWrapper->IsInGame()) {
             cvarManager->log("RLDisasters TEST: not in game, aborting");
@@ -93,56 +98,29 @@ void RLDisasters::onLoad()
         cvarManager->log("RLDisasters TEST: called SetBallScale(4.0) — look at the ball NOW");
     }, "DIAGNOSTIC: forces ball to 4x scale instantly", PERMISSION_ALL);
 
-    // DIAGNOSTIC ONLY: instantly forces a random rumble type on, the same
-    // way Persistent Rumble would on a goal, but on demand. Use this in a
-    // LAN match to directly test whether sv_freeplay_rumble_enable_* does
-    // anything outside Freeplay — something neither of us could confirm
-    // from documentation alone.
-    cvarManager->registerNotifier("disasters_forcerumble", [this](std::vector<std::string>) {
+    // DIAGNOSTIC: reports whether your car is currently holding a rumble
+    // pickup right now, using the same CarWrapper::GetAttachedPickup()
+    // call confirmed working in a real, multiplayer-tested plugin
+    // (ZpeedTube/rumble-recharge). REQUIRES the Rumble mutator to be on
+    // when you host the match — without it the game never spawns any
+    // pickups to detect in the first place.
+    cvarManager->registerNotifier("disasters_checkpickup", [this](std::vector<std::string>) {
         if (!gameWrapper->IsInGame()) {
             cvarManager->log("RLDisasters TEST: not in game, aborting");
             return;
         }
-        PickNewRumble();
-        cvarManager->log("RLDisasters TEST: forced a random rumble ability ON — wait a few seconds and look near the ball");
-    }, "DIAGNOSTIC: instantly forces a random rumble ability on", PERMISSION_ALL);
-
-    // DIAGNOSTIC ONLY: tries to scale the goal's WORLD EXTENT (its
-    // detection/collision box) to 3x. IMPORTANT: GoalWrapper does not
-    // inherit from ActorWrapper in this SDK, so it has no visual mesh
-    // scale function at all — only this invisible detection-box size.
-    // This button exists so you can confirm with your own eyes that nothing
-    // visually changes, rather than just take my word for the limitation.
-    cvarManager->registerNotifier("disasters_testgoalsize", [this](std::vector<std::string>) {
-        if (!gameWrapper->IsInGame()) {
-            cvarManager->log("RLDisasters TEST: not in game, aborting");
+        CarWrapper car = gameWrapper->GetLocalCar();
+        if (car.IsNull()) {
+            cvarManager->log("RLDisasters TEST: local car is null, aborting");
             return;
         }
-        ServerWrapper server = gameWrapper->GetCurrentGameState();
-        if (server.IsNull()) {
-            cvarManager->log("RLDisasters TEST: server is null, aborting");
-            return;
+        auto pickup = car.GetAttachedPickup();
+        if (pickup.IsNull()) {
+            cvarManager->log("RLDisasters TEST: you are NOT currently holding a rumble item (requires Rumble mutator to be on to ever hold one)");
+        } else {
+            cvarManager->log("RLDisasters TEST: you ARE currently holding a rumble item right now");
         }
-        ArrayWrapper<GoalWrapper> goals = server.GetGoals();
-        if (goals.Count() == 0) {
-            cvarManager->log("RLDisasters TEST: no goals found, aborting");
-            return;
-        }
-        for (int i = 0; i < goals.Count(); i++) {
-            GoalWrapper goal = goals.Get(i);
-            if (goal.IsNull()) continue;
-            Vector extent = goal.GetWorldExtent();
-            goal.SetWorldExtent(Vector(extent.X * 3.0f, extent.Y * 3.0f, extent.Z * 3.0f));
-        }
-        cvarManager->log("RLDisasters TEST: tripled goal WorldExtent (invisible detection box only — expect NO visual change, this is the known SDK limitation)");
-    }, "DIAGNOSTIC: triples goal detection-box size (no visual mesh scale exists in this SDK)", PERMISSION_ALL);
-
-    // DIAGNOSTIC ONLY: there is no field/arena scale function anywhere in
-    // this SDK at all — not even an invisible one like goals have. This
-    // logs that fact clearly rather than silently doing nothing.
-    cvarManager->registerNotifier("disasters_testfieldsize", [this](std::vector<std::string>) {
-        cvarManager->log("RLDisasters TEST: there is no field/arena scale function in the BakkesMod SDK — this would require a custom map built at a different scale, not something a plugin can do at runtime.");
-    }, "DIAGNOSTIC: explains why field scaling isn't possible via plugin", PERMISSION_ALL);
+    }, "DIAGNOSTIC: reports if you're currently holding a rumble item", PERMISSION_ALL);
 
     HookEvents();
     cvarManager->log("RLDisasters: loaded");
@@ -167,9 +145,7 @@ void RLDisasters::HookEvents()
 
     // Fires every physics tick (per car) while in a match — the
     // documented, game-thread-safe hook real plugins use for continuous
-    // logic. (Currently unused by any of the three disasters, since none
-    // need per-frame work, but kept hooked for future use / consistent
-    // lifecycle with goal/match events.)
+    // logic. Used here to poll rumble-pickup status every tick.
     gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput",
         [this](std::string e) { OnTick(e); });
 }
@@ -193,10 +169,7 @@ void RLDisasters::OnMatchStarted(std::string)
     // making Growing Ball and Low Gravity Goals look like they did
     // nothing. Progress now only resets via the explicit Reset All
     // button/notifier, or when the plugin loads/unloads.
-    if (persistentRumbleOn && goalsScored == 0) {
-        // only pick an initial rumble type on a genuinely fresh start
-        PickNewRumble();
-    }
+    lastTickHadPickup = false;
 }
 
 void RLDisasters::OnGoalScored(std::string)
@@ -209,26 +182,26 @@ void RLDisasters::OnGoalScored(std::string)
     // with a freshly spawned one. Calling SetBallScale right here lands
     // on the dying ball, not the new one, so the scale never visibly
     // sticks. We delay slightly so GrowBall runs after the new ball
-    // exists. Gravity/rumble aren't tied to a specific object instance,
-    // so they don't have this problem and can run immediately.
+    // exists. Gravity isn't tied to a specific object instance, so it
+    // doesn't have this problem and can run immediately.
     if (growingBallOn) {
         gameWrapper->SetTimeout([this](GameWrapper*) {
             GrowBall();
         }, 0.3f);
     }
-    if (persistentRumbleOn) PickNewRumble();
-    if (lowGravityGoalsOn)  ApplyLowGravityGoals();
+    if (lowGravityGoalsOn) ApplyLowGravityGoals();
 }
 
 void RLDisasters::OnTick(std::string)
 {
     if (!gameWrapper->IsInGame()) return;
 
-    // Dedupe multiple cars firing the same physics tick — kept here for
-    // consistency even though no per-frame disaster logic currently runs.
+    // Dedupe multiple cars firing the same physics tick.
     int frame = gameWrapper->GetEngine().GetPhysicsFrame();
     if (frame == lastPhysicsFrame) return;
     lastPhysicsFrame = frame;
+
+    if (persistentRumbleOn) TickRumbleTracking();
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -248,22 +221,30 @@ void RLDisasters::GrowBall()
 
 // ════════════════════════════════════════════════════════════════════
 //  Disaster: Persistent Rumble
-//  Turns off all 11 freeplay rumble item types, then turns on exactly
-//  one at random. That single type stays active until a goal is scored,
-//  at which point a new one is picked (can repeat — confirmed OK).
+//  Requires the Rumble mutator to be enabled when hosting the match —
+//  that's what makes the game spawn real pickup items at all. This
+//  plugin doesn't (and per the SDK, can't) create or force a specific
+//  ability; it tracks via CarWrapper::GetAttachedPickup() whether you're
+//  currently holding one, and logs when that changes, using the same
+//  approach confirmed working in real multiplayer by the published
+//  ZpeedTube/rumble-recharge plugin.
 // ════════════════════════════════════════════════════════════════════
-void RLDisasters::DisableAllRumble()
+void RLDisasters::TickRumbleTracking()
 {
-    for (const auto& ability : rumbleAbilities) {
-        cvarManager->executeCommand("sv_freeplay_rumble_enable_" + ability + " 0", false);
-    }
-}
+    CarWrapper car = gameWrapper->GetLocalCar();
+    if (car.IsNull()) return;
 
-void RLDisasters::PickNewRumble()
-{
-    DisableAllRumble();
-    int index = rand() % static_cast<int>(rumbleAbilities.size());
-    cvarManager->executeCommand("sv_freeplay_rumble_enable_" + rumbleAbilities[index] + " 1", false);
+    auto pickup = car.GetAttachedPickup();
+    bool hasPickupNow = !pickup.IsNull();
+
+    if (hasPickupNow != lastTickHadPickup) {
+        if (hasPickupNow) {
+            cvarManager->log("RLDisasters: you picked up a rumble item");
+        } else {
+            cvarManager->log("RLDisasters: your rumble item is gone (used or expired)");
+        }
+        lastTickHadPickup = hasPickupNow;
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -286,12 +267,12 @@ void RLDisasters::ApplyLowGravityGoals()
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::ResetAll()
 {
-    goalsScored    = 0;
-    ballScale      = 1.0f;
-    currentGravity = -650.0f;
+    goalsScored      = 0;
+    ballScale        = 1.0f;
+    currentGravity   = -650.0f;
+    lastTickHadPickup = false;
 
     cvarManager->executeCommand("sv_soccar_gravity -650", false);
-    DisableAllRumble();
 
     if (!gameWrapper->IsInGame()) return;
     ServerWrapper server = gameWrapper->GetCurrentGameState();
