@@ -1,19 +1,24 @@
 #include "RLDisasters.h"
 #include "bakkesmod/wrappers/gamewrapper.h"
-#include "bakkesmod/wrappers/gameobject/carwrapper.h"
-#include "bakkesmod/wrappers/gameevent/serverwrapper.h"
 #include <algorithm>
+#include <cstdlib>
+#include <ctime>
 
 BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters", "1.0", 0)
 
 void RLDisasters::onLoad()
 {
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+
     cvarManager->registerCvar("disasters_persistentRumble", "0", "Enable persistent rumble item generation", true, true, 0, true, 1)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             persistentRumbleOn = cvar.getBoolValue();
+            if (persistentRumbleOn) {
+                ChooseRandomRumbleItem();
+            } else {
+                cvarManager->executeCommand("sv_freeplay_rumble_enable_item 0", false);
+            }
         });
-
-    cvarManager->registerCvar("disasters_rumbleItem", "Spikes_TA", "Item class name to force persistently", true, false, 0, false, 0);
 
     cvarManager->registerCvar("disasters_lowGravityGoals", "0", "Gravity gets weaker every goal scored", true, true, 0, true, 1)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
@@ -51,20 +56,19 @@ void RLDisasters::HookEvents()
 
     gameWrapper->HookEvent("Function TAGame.Ball_TA.Explode",
         [this](std::string e) { OnGoalScored(e); });
-
-    gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput",
-        [this](std::string e) { OnTick(e); });
 }
 
 void RLDisasters::UnhookEvents()
 {
     gameWrapper->UnhookEvent("Function GameEvent_Soccar_TA.Active.StartRound");
     gameWrapper->UnhookEvent("Function TAGame.Ball_TA.Explode");
-    gameWrapper->UnhookEvent("Function TAGame.Car_TA.SetVehicleInput");
 }
 
 void RLDisasters::OnMatchStarted(std::string)
 {
+    if (persistentRumbleOn) {
+        cvarManager->executeCommand("sv_freeplay_rumble_enable_item " + std::to_string(currentRandomItem), false);
+    }
 }
 
 void RLDisasters::OnGoalScored(std::string)
@@ -72,29 +76,13 @@ void RLDisasters::OnGoalScored(std::string)
     if (!gameWrapper->IsInGame()) return;
     goalsScored++;
     if (lowGravityGoalsOn) ApplyLowGravityGoals();
+    if (persistentRumbleOn) ChooseRandomRumbleItem();
 }
 
-void RLDisasters::OnTick(std::string)
+void RLDisasters::ChooseRandomRumbleItem()
 {
-    if (!gameWrapper->IsInGame()) return;
-
-    int frame = gameWrapper->GetEngine().GetPhysicsFrame();
-    if (frame == lastPhysicsFrame) return;
-    lastPhysicsFrame = frame;
-
-    if (persistentRumbleOn) TickRumbleTracking();
-}
-
-void RLDisasters::TickRumbleTracking()
-{
-    CarWrapper car = gameWrapper->GetLocalCar();
-    if (car.IsNull()) return;
-
-    auto pickup = car.GetAttachedPickup();
-    if (pickup.IsNull()) {
-        std::string item = cvarManager->getCvar("disasters_rumbleItem").getStringValue();
-        cvarManager->executeCommand("cheat giveitem " + item, false);
-    }
+    currentRandomItem = 1 + (std::rand() % 11);
+    cvarManager->executeCommand("sv_freeplay_rumble_enable_item " + std::to_string(currentRandomItem), false);
 }
 
 void RLDisasters::ApplyLowGravityGoals()
@@ -109,5 +97,7 @@ void RLDisasters::ResetAll()
 {
     goalsScored = 0;
     currentGravity = -650.0f;
+    currentRandomItem = 0;
     cvarManager->executeCommand("sv_soccar_gravity -650", false);
+    cvarManager->executeCommand("sv_freeplay_rumble_enable_item 0", false);
 }
