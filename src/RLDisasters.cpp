@@ -205,8 +205,7 @@ void RLDisasters::OnTick(std::string)
     lastPhysicsFrame = frame;
 
     if (persistentRumbleOn) {
-        AutoUsePickup();  // instantly uses any pickup you're holding
-        TickRumbleTracking(); // logs changes
+        TickRumbleTracking();  // now contains both detection and auto‑use
     }
 }
 
@@ -235,7 +234,7 @@ void RLDisasters::GrowBall()
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Disaster: Persistent Rumble – Auto‑use and logging
+//  Disaster: Persistent Rumble – Auto‑use on pickup detection
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::TickRumbleTracking()
 {
@@ -245,28 +244,27 @@ void RLDisasters::TickRumbleTracking()
     auto pickup = car.GetAttachedPickup();
     bool hasPickupNow = !pickup.IsNull();
 
-    if (hasPickupNow != lastTickHadPickup) {
-        std::string newName = hasPickupNow ? pickup.GetPickupName().ToString() : "none";
-        cvarManager->log("RLDisasters: Rumble change — \""
-            + currentRumbleName + "\" -> \"" + newName + "\"");
+    // If we have a new pickup (wasn't holding one before)
+    if (hasPickupNow && !lastTickHadPickup) {
+        std::string newName = pickup.GetPickupName().ToString();
+        cvarManager->log("RLDisasters: NEW PICKUP DETECTED: " + newName);
+        
+        // AUTO‑USE: activate it immediately
+        pickup.PickupStart();
+        cvarManager->log("RLDisasters: auto‑used pickup: " + newName);
+        
+        // Update tracking so we don't re‑use it
         currentRumbleName = newName;
-        lastTickHadPickup = hasPickupNow;
+        lastTickHadPickup = true;
     }
+    else if (!hasPickupNow && lastTickHadPickup) {
+        // We lost the pickup (used or dropped)
+        cvarManager->log("RLDisasters: pickup lost (was: " + currentRumbleName + ")");
+        lastTickHadPickup = false;
+        currentRumbleName = "none";
+    }
+    // else nothing changed – do nothing
 }
-
-void RLDisasters::AutoUsePickup()
-{
-    CarWrapper car = gameWrapper->GetLocalCar();
-    if (car.IsNull()) return;
-
-    auto pickup = car.GetAttachedPickup();
-    if (pickup.IsNull()) return;
-
-    // Immediately activate the powerup (use it)
-    pickup.PickupStart();
-    cvarManager->log("RLDisasters: auto‑used pickup: " + pickup.GetPickupName().ToString());
-}
-
 // ════════════════════════════════════════════════════════════════════
 //  Disaster: Low Gravity Goals
 // ════════════════════════════════════════════════════════════════════
