@@ -4,7 +4,9 @@
 #include "bakkesmod/wrappers/gameobject/ballwrapper.h"
 #include "bakkesmod/wrappers/gameevent/serverwrapper.h"
 #include "bakkesmod/wrappers/engine/unrealstringwrapper.h"
+#include "bakkesmod/wrappers/GameObject/RumbleComponent/RumblePickup.h"
 #include <algorithm>
+#include <unordered_map>
 
 // pluginType 0 = no mode restriction. Growing Ball / Low Gravity Goals
 // only DO anything when you are the host: Freeplay, Custom Training, or
@@ -50,7 +52,7 @@ void RLDisasters::onLoad()
             }
         });
 
-    cvarManager->registerCvar("disasters_persistentRumble", "0", "Requires Rumble mutator: notifies you on the HUD log whenever you're holding (or not holding) a rumble item", true, true, 0, true, 1)
+    cvarManager->registerCvar("disasters_persistentRumble", "0", "Requires Rumble mutator: forces a specific rumble type on your car, cycles on goal", true, true, 0, true, 1)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             persistentRumbleOn = cvar.getBoolValue();
             lastTickHadPickup = false;
@@ -84,6 +86,19 @@ void RLDisasters::onLoad()
     cvarManager->registerCvar("disasters_gravityPerGoal", "100", "How much gravity weakens per goal (units toward zero)", true, true, 10, true, 400)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             gravityStepPerGoal = cvar.getFloatValue();
+        });
+
+    // ─── NEW: cvar to set the desired rumble type ───
+    cvarManager->registerCvar("disasters_rumbleType", "freeze", "Rumble powerup to force (freeze, spikes, boot, etc.)", true)
+        .addOnValueChanged([this](std::string, CVarWrapper cvar) {
+            std::string val = cvar.getStringValue();
+            auto it = std::find(rumbleCycle.begin(), rumbleCycle.end(), val);
+            if (it != rumbleCycle.end()) {
+                desiredRumbleIndex = (int)std::distance(rumbleCycle.begin(), it);
+                cvarManager->log("RLDisasters: desired rumble set to " + val);
+            } else {
+                cvarManager->log("RLDisasters: unknown rumble type \"" + val + "\"");
+            }
         });
 
     cvarManager->registerNotifier("disasters_resetall", [this](std::vector<std::string>) {
@@ -223,6 +238,12 @@ void RLDisasters::OnGoalScored(std::string)
     // Low Gravity Goals — tracked per goal scored, not per kickoff.
     if (lowGravityGoalsOn) ApplyLowGravityGoals();
 
+    // ─── NEW: cycle to the next rumble powerup on goal ───
+    if (persistentRumbleOn) {
+        desiredRumbleIndex = (desiredRumbleIndex + 1) % (int)rumbleCycle.size();
+        cvarManager->log("RLDisasters: goal scored — cycling rumble to " + rumbleCycle[desiredRumbleIndex]);
+    }
+
     // NOTE: GrowBall and ChaosSpeed now fire in OnMatchStarted (kickoff)
     // instead of here — that's when the new ball exists and when the speed
     // change is most impactful. Goal-scoring is just the trigger that
@@ -238,7 +259,11 @@ void RLDisasters::OnTick(std::string)
     if (frame == lastPhysicsFrame) return;
     lastPhysicsFrame = frame;
 
-    if (persistentRumbleOn) TickRumbleTracking();
+    // ─── MODIFIED: force rumble instead of just logging ───
+    if (persistentRumbleOn) {
+        ForceDesiredRumble();   // changes your pickup to the desired type every tick
+        // TickRumbleTracking(); // (optional – keep this if you want the old log messages too)
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -292,6 +317,47 @@ void RLDisasters::TickRumbleTracking()
     }
 }
 
+// ─── NEW: force the pickup to be the desired rumble type ───
+void RLDisasters::ForceDesiredRumble()
+{
+    CarWrapper car = gameWrapper->GetLocalCar();
+    if (car.IsNull()) return;
+
+    auto pickup = car.GetAttachedPickup();
+    if (pickup.IsNull()) return;   // not holding anything – nothing to force
+
+    std::string currentName = pickup.GetPickupName().ToString();
+    std::string desiredName = rumbleCycle[desiredRumbleIndex];
+
+    if (currentName == desiredName) return; // already correct
+
+    // Map the desired name to the SDK's PickupType enum
+    static std::unordered_map<std::string, PickupType> nameToEnum = {
+        {"freeze", PickupType::Freeze},
+        {"spikes", PickupType::Spikes},
+        {"boot", PickupType::Boot},
+        {"plunger", PickupType::Plunger},
+        {"grapple", PickupType::Grapple},
+        {"lasso", PickupType::Lasso},
+        {"spring", PickupType::Spring},
+        {"boxingglove", PickupType::BoxingGlove},
+        {"battarang", PickupType::Battarang},
+        {"disruptor", PickupType::Disruptor},
+        {"magnet", PickupType::Magnet},
+        {"powerhitter", PickupType::PowerHitter},
+        {"haymaker", PickupType::Haymaker},
+        {"ballcarrier", PickupType::BallCarrier}
+    };
+
+    auto it = nameToEnum.find(desiredName);
+    if (it != nameToEnum.end()) {
+        pickup.SetPickupType(it->second);
+        cvarManager->log("RLDisasters: forced rumble from \"" + currentName + "\" to \"" + desiredName + "\"");
+    } else {
+        cvarManager->log("RLDisasters: internal error – \"" + desiredName + "\" has no enum mapping");
+    }
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  Disaster: Low Gravity Goals
 //  Gravity is negative (default -650). "Weaker" means closer to zero,
@@ -333,6 +399,7 @@ void RLDisasters::ApplyChaosSpeed()
     server.SetGameSpeed(currentGameSpeed);
     cvarManager->log("RLDisasters: ApplyChaosSpeed — speed now " + std::to_string(currentGameSpeed));
 }
+
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::ResetAll()
 {
