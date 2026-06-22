@@ -3,6 +3,7 @@
 #include "bakkesmod/wrappers/gameobject/carwrapper.h"
 #include "bakkesmod/wrappers/gameobject/ballwrapper.h"
 #include "bakkesmod/wrappers/gameevent/serverwrapper.h"
+#include "bakkesmod/wrappers/engine/unrealstringwrapper.h"
 #include <algorithm>
 
 // pluginType 0 = no mode restriction. Growing Ball / Low Gravity Goals
@@ -179,27 +180,53 @@ void RLDisasters::UnhookEvents()
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::OnMatchStarted(std::string)
 {
-    cvarManager->log("RLDisasters: OnMatchStarted fired (round restart or new match)");
-    lastTickHadPickup = false;
+    if (!gameWrapper->IsInGame()) return;
+
+    cvarManager->log("RLDisasters: kickoff started");
+
+    // Growing Ball — apply scale to the new ball that just spawned for
+    // this kickoff. This is the right moment: the ball exists, is fresh,
+    // and hasn't been hit yet. Much more reliable than trying to scale it
+    // right at the goal explosion moment.
+    if (growingBallOn) GrowBall();
+
+    // Chaos Speed — change speed at the start of each new kickoff so
+    // players feel it immediately when play resumes.
+    if (chaosSpeedOn) ApplyChaosSpeed();
+
+    // Persistent Rumble — log the current rumble type at kickoff start
+    // (including the very first kickoff of the match) and re-read the
+    // car's attached pickup to keep tracking state fresh.
+    if (persistentRumbleOn) {
+        lastTickHadPickup = false; // force a fresh state read next tick
+        CarWrapper car = gameWrapper->GetLocalCar();
+        if (!car.IsNull()) {
+            auto pickup = car.GetAttachedPickup();
+            std::string name = pickup.IsNull() ? "none" : pickup.GetPickupName().ToString();
+            currentRumbleName = name;
+            cvarManager->log("RLDisasters: kickoff — current rumble item: " + name);
+        }
+    }
 }
 
 void RLDisasters::OnGoalScored(std::string)
 {
     if (!gameWrapper->IsInGame()) return;
     goalsScored++;
-    cvarManager->log("RLDisasters: goal scored! total=" + std::to_string(goalsScored)
-        + " growingBall=" + std::to_string(growingBallOn)
-        + " lowGravity=" + std::to_string(lowGravityGoalsOn)
-        + " chaosSpeed=" + std::to_string(chaosSpeedOn));
 
-    if (growingBallOn) {
-        cvarManager->log("RLDisasters: queuing GrowBall in 0.3s");
-        gameWrapper->SetTimeout([this](GameWrapper*) {
-            GrowBall();
-        }, 0.3f);
-    }
+    cvarManager->log("RLDisasters: GOAL SCORED total=" + std::to_string(goalsScored)
+        + " | growingBall=" + std::to_string(growingBallOn)
+        + " lowGravity=" + std::to_string(lowGravityGoalsOn)
+        + " chaosSpeed=" + std::to_string(chaosSpeedOn)
+        + " rumble=" + std::to_string(persistentRumbleOn));
+
+    // Low Gravity Goals — tracked per goal scored, not per kickoff.
     if (lowGravityGoalsOn) ApplyLowGravityGoals();
-    if (chaosSpeedOn)      ApplyChaosSpeed();
+
+    // NOTE: GrowBall and ChaosSpeed now fire in OnMatchStarted (kickoff)
+    // instead of here — that's when the new ball exists and when the speed
+    // change is most impactful. Goal-scoring is just the trigger that
+    // increments the counter; the visual effect happens at the kickoff.
 }
 
 void RLDisasters::OnTick(std::string)
@@ -257,11 +284,10 @@ void RLDisasters::TickRumbleTracking()
     bool hasPickupNow = !pickup.IsNull();
 
     if (hasPickupNow != lastTickHadPickup) {
-        if (hasPickupNow) {
-            cvarManager->log("RLDisasters: you picked up a rumble item");
-        } else {
-            cvarManager->log("RLDisasters: your rumble item is gone (used or expired)");
-        }
+        std::string newName = hasPickupNow ? pickup.GetPickupName().ToString() : "none";
+        cvarManager->log("RLDisasters: Rumble change — \""
+            + currentRumbleName + "\" -> \"" + newName + "\"");
+        currentRumbleName = newName;
         lastTickHadPickup = hasPickupNow;
     }
 }
