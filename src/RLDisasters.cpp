@@ -324,15 +324,15 @@ void RLDisasters::ForceDesiredRumble()
     if (car.IsNull()) return;
 
     auto pickup = car.GetAttachedPickup();
-    if (pickup.IsNull()) return;   // not holding anything
+    if (pickup.IsNull()) return;
 
     std::string currentName = pickup.GetPickupName().ToString();
     std::string desiredName = rumbleCycle[desiredRumbleIndex];
 
-    if (currentName == desiredName) return; // already correct
+    if (currentName == desiredName) return;
 
-    // Set the pickup type by modifying the underlying string
-    pickup.GetPickupName().SetString(desiredName);
+    // Assign the new name directly via operator=
+    pickup.GetPickupName() = desiredName;
     cvarManager->log("RLDisasters: forced rumble from \"" + currentName + "\" to \"" + desiredName + "\"");
 }
 
