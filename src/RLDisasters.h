@@ -13,7 +13,7 @@ private:
     bool growingBallOn      = false;
     bool persistentRumbleOn = false;
     bool lowGravityGoalsOn  = false;
-    bool chaosSpeedOn       = false;  // SetGameSpeed confirmed real in ServerWrapper.h
+    bool chaosSpeedOn       = false;
 
     int   goalsScored        = 0;
     float ballScale          = 1.0f;
@@ -24,7 +24,7 @@ private:
     bool  lastTickHadPickup  = false;
     std::string currentRumbleName = "none";
 
-    // Rumble cycling
+    // Rumble cycling list
     std::vector<std::string> rumbleCycle = {
         "freeze", "spikes", "boot", "plunger", "grapple", "lasso",
         "spring", "boxingglove", "battarang", "disruptor",
@@ -41,7 +41,7 @@ private:
 
     void GrowBall();
     void TickRumbleTracking();
-    void ForceDesiredRumble();      // forces the current pickup to match desiredRumbleIndex
+    void ForceDesiredRumble();   // forces the current pickup to match desiredRumbleIndex
     void ApplyLowGravityGoals();
     void ApplyChaosSpeed();
 
