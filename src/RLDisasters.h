@@ -21,6 +21,7 @@ private:
     float currentGameSpeed   = 1.0f;
     int   lastPhysicsFrame   = -1;
     bool  lastTickHadPickup  = false;
+    std::string currentRumbleName = "none";
 
     void HookEvents();
     void UnhookEvents();
