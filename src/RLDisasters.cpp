@@ -140,7 +140,7 @@ void RLDisasters::onLoad()
     }, "DIAGNOSTIC: reports if you're currently holding a rumble item", PERMISSION_ALL);
 
     HookEvents();
-    cvarManager->log("RLDisasters: loaded");
+    cvarManager->log("RLDisasters: loaded — all cvars registered, all hooks active");
 }
 
 void RLDisasters::onUnload()
@@ -179,13 +179,7 @@ void RLDisasters::UnhookEvents()
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::OnMatchStarted(std::string)
 {
-    // NOTE: this fires on every round restart, including right after a
-    // goal in Freeplay/Soccar — NOT just when a fresh match begins. We
-    // deliberately do NOT call ResetAll() here anymore, since that was
-    // wiping ball scale / gravity progress immediately after every goal,
-    // making Growing Ball and Low Gravity Goals look like they did
-    // nothing. Progress now only resets via the explicit Reset All
-    // button/notifier, or when the plugin loads/unloads.
+    cvarManager->log("RLDisasters: OnMatchStarted fired (round restart or new match)");
     lastTickHadPickup = false;
 }
 
@@ -193,15 +187,13 @@ void RLDisasters::OnGoalScored(std::string)
 {
     if (!gameWrapper->IsInGame()) return;
     goalsScored++;
+    cvarManager->log("RLDisasters: goal scored! total=" + std::to_string(goalsScored)
+        + " growingBall=" + std::to_string(growingBallOn)
+        + " lowGravity=" + std::to_string(lowGravityGoalsOn)
+        + " chaosSpeed=" + std::to_string(chaosSpeedOn));
 
-    // IMPORTANT: this fires the instant the ball explodes — at that exact
-    // moment the old ball object is about to be destroyed and replaced
-    // with a freshly spawned one. Calling SetBallScale right here lands
-    // on the dying ball, not the new one, so the scale never visibly
-    // sticks. We delay slightly so GrowBall runs after the new ball
-    // exists. Gravity isn't tied to a specific object instance, so it
-    // doesn't have this problem and can run immediately.
     if (growingBallOn) {
+        cvarManager->log("RLDisasters: queuing GrowBall in 0.3s");
         gameWrapper->SetTimeout([this](GameWrapper*) {
             GrowBall();
         }, 0.3f);
@@ -227,14 +219,23 @@ void RLDisasters::OnTick(std::string)
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::GrowBall()
 {
-    if (!gameWrapper->IsInGame()) return;
+    if (!gameWrapper->IsInGame()) {
+        cvarManager->log("RLDisasters: GrowBall — not in game, skipping");
+        return;
+    }
     ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (server.IsNull()) return;
+    if (server.IsNull()) {
+        cvarManager->log("RLDisasters: GrowBall — server null, skipping");
+        return;
+    }
     BallWrapper ball = server.GetBall();
-    if (ball.IsNull()) return;
-
+    if (ball.IsNull()) {
+        cvarManager->log("RLDisasters: GrowBall — ball null, skipping");
+        return;
+    }
     ballScale = std::min<float>(ballScale + 0.08f, 2.5f);
     ball.SetBallScale(ballScale);
+    cvarManager->log("RLDisasters: GrowBall — set scale to " + std::to_string(ballScale));
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -278,31 +279,33 @@ void RLDisasters::ApplyLowGravityGoals()
     float cap = -150.0f;
     currentGravity = std::min<float>(nextGravity, cap);
     cvarManager->executeCommand("sv_soccar_gravity " + std::to_string(currentGravity), false);
+    cvarManager->log("RLDisasters: ApplyLowGravityGoals — gravity now " + std::to_string(currentGravity));
 }
 
 // ════════════════════════════════════════════════════════════════════
 //  Disaster: Chaos Speed
-//  Each goal scored picks a random game speed from a set of options:
-//  very slow (0.5x), slow (0.7x), normal (1.0x), fast (1.5x), frantic
-//  (2.0x). SetGameSpeed confirmed real in full ServerWrapper.h read.
-//  Requires HasAuthority() — only works when you're hosting.
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::ApplyChaosSpeed()
 {
-    if (!gameWrapper->IsInGame()) return;
+    if (!gameWrapper->IsInGame()) {
+        cvarManager->log("RLDisasters: ApplyChaosSpeed — not in game, skipping");
+        return;
+    }
     ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (server.IsNull() || !server.HasAuthority()) return;
-
+    if (server.IsNull()) {
+        cvarManager->log("RLDisasters: ApplyChaosSpeed — server null, skipping");
+        return;
+    }
+    if (!server.HasAuthority()) {
+        cvarManager->log("RLDisasters: ApplyChaosSpeed — no authority (not hosting), skipping");
+        return;
+    }
     static const float speeds[] = { 0.5f, 0.7f, 1.0f, 1.5f, 2.0f };
     static const int   count    = 5;
-
-    int index = goalsScored % count;
-    // Shuffle using goal count + a simple offset so it doesn't always
-    // follow the same sequence — not truly random but varies enough
-    // without needing rand() seeding.
-    index = (index * 3 + goalsScored) % count;
+    int index = (goalsScored * 3 + goalsScored) % count;
     currentGameSpeed = speeds[index];
     server.SetGameSpeed(currentGameSpeed);
+    cvarManager->log("RLDisasters: ApplyChaosSpeed — speed now " + std::to_string(currentGameSpeed));
 }
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::ResetAll()
