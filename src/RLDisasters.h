@@ -1,6 +1,7 @@
 #pragma once
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include <string>
+#include <vector>
 
 class RLDisasters : public BakkesMod::Plugin::BakkesModPlugin
 {
@@ -23,6 +24,14 @@ private:
     bool  lastTickHadPickup  = false;
     std::string currentRumbleName = "none";
 
+    // Rumble cycling
+    std::vector<std::string> rumbleCycle = {
+        "freeze", "spikes", "boot", "plunger", "grapple", "lasso",
+        "spring", "boxingglove", "battarang", "disruptor",
+        "magnet", "powerhitter", "haymaker", "ballcarrier"
+    };
+    int desiredRumbleIndex = 0;
+
     void HookEvents();
     void UnhookEvents();
 
@@ -32,6 +41,7 @@ private:
 
     void GrowBall();
     void TickRumbleTracking();
+    void ForceDesiredRumble();      // forces the current pickup to match desiredRumbleIndex
     void ApplyLowGravityGoals();
     void ApplyChaosSpeed();
 
