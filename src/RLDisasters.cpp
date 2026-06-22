@@ -324,38 +324,16 @@ void RLDisasters::ForceDesiredRumble()
     if (car.IsNull()) return;
 
     auto pickup = car.GetAttachedPickup();
-    if (pickup.IsNull()) return;   // not holding anything – nothing to force
+    if (pickup.IsNull()) return;   // not holding anything
 
     std::string currentName = pickup.GetPickupName().ToString();
     std::string desiredName = rumbleCycle[desiredRumbleIndex];
 
     if (currentName == desiredName) return; // already correct
 
-    // Map the desired name to the SDK's PickupType enum
-    static std::unordered_map<std::string, PickupType> nameToEnum = {
-        {"freeze", PickupType::Freeze},
-        {"spikes", PickupType::Spikes},
-        {"boot", PickupType::Boot},
-        {"plunger", PickupType::Plunger},
-        {"grapple", PickupType::Grapple},
-        {"lasso", PickupType::Lasso},
-        {"spring", PickupType::Spring},
-        {"boxingglove", PickupType::BoxingGlove},
-        {"battarang", PickupType::Battarang},
-        {"disruptor", PickupType::Disruptor},
-        {"magnet", PickupType::Magnet},
-        {"powerhitter", PickupType::PowerHitter},
-        {"haymaker", PickupType::Haymaker},
-        {"ballcarrier", PickupType::BallCarrier}
-    };
-
-    auto it = nameToEnum.find(desiredName);
-    if (it != nameToEnum.end()) {
-        pickup.SetPickupType(it->second);
-        cvarManager->log("RLDisasters: forced rumble from \"" + currentName + "\" to \"" + desiredName + "\"");
-    } else {
-        cvarManager->log("RLDisasters: internal error – \"" + desiredName + "\" has no enum mapping");
-    }
+    // Set the pickup type by name (assumes SetPickupName exists)
+    pickup.SetPickupName(desiredName);
+    cvarManager->log("RLDisasters: forced rumble from \"" + currentName + "\" to \"" + desiredName + "\"");
 }
 
 // ════════════════════════════════════════════════════════════════════
