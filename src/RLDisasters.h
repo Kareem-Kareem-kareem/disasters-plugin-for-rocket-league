@@ -24,7 +24,7 @@ private:
     bool  lastTickHadPickup  = false;
     std::string currentRumbleName = "none";
 
-    // Just for cycling (logging only – no forcing)
+    // Rumble cycling list (logging only)
     std::vector<std::string> rumbleCycle = {
         "freeze", "spikes", "boot", "plunger", "grapple", "lasso",
         "spring", "boxingglove", "battarang", "disruptor",
@@ -40,8 +40,7 @@ private:
     void OnTick(std::string eventName);
 
     void GrowBall();
-    void TickRumbleTracking();
-    void AutoUsePickup();    // instantly uses any pickup you have
+    void TickRumbleTracking();   // now also triggers auto‑use
     void ApplyLowGravityGoals();
     void ApplyChaosSpeed();
 
