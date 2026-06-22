@@ -2,14 +2,14 @@ RL Disasters
 9|Only works while YOU are hosting: Freeplay, Custom Training, or a LAN match started with "host".
 8
 1|Growing Ball (+8% per goal, caps at 2.5x)|disasters_growingBall
-1|Persistent Rumble (one random ability active, swaps on goal)|disasters_persistentRumble
-1|Low Gravity Goals (gravity weakens each goal, gets floatier)|disasters_lowGravityGoals
+1|Persistent Rumble tracking (logs pickup state — needs Rumble mutator ON)|disasters_persistentRumble
+1|Low Gravity Goals (gravity weakens each goal)|disasters_lowGravityGoals
+1|Chaos Speed (game speed randomizes each goal: slow/normal/fast)|disasters_chaosSpeed
 8
-9|Gravity per goal (units toward zero). Type a number in F6 console, e.g: disasters_gravityPerGoal 150
-9|Current value is shown by typing: disasters_gravityPerGoal
+4|Gravity per goal (units toward zero)|disasters_gravityPerGoal|10|400
 8
-9|--- Diagnostics: test things directly, no goal needed ---
+9|--- Diagnostics ---
 0|Test Ball Size (4x)|disasters_testballsize
-0|Force Persistent Rumble (random ability ON now)|disasters_forcerumble
+0|Check if holding a rumble item right now|disasters_checkpickup
 8
 0|Reset All Disasters|disasters_resetall
