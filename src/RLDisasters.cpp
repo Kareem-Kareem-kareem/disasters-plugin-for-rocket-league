@@ -31,7 +31,7 @@ void RLDisasters::onLoad()
             }
         });
 
-    cvarManager->registerCvar("disasters_persistentRumble", "0", "Requires Rumble mutator: forces a specific rumble type on your car, cycles on goal", true, true, 0, true, 1)
+    cvarManager->registerCvar("disasters_persistentRumble", "0", "Auto‑uses any rumble pickup you get, cycles the logged type on goal", true, true, 0, true, 1)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             persistentRumbleOn = cvar.getBoolValue();
             lastTickHadPickup = false;
@@ -64,7 +64,7 @@ void RLDisasters::onLoad()
             gravityStepPerGoal = cvar.getFloatValue();
         });
 
-    cvarManager->registerCvar("disasters_rumbleType", "freeze", "Rumble powerup to force (freeze, spikes, boot, etc.)", true)
+    cvarManager->registerCvar("disasters_rumbleType", "freeze", "Rumble powerup to cycle to (only for logging)", true)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             std::string val = cvar.getStringValue();
             auto it = std::find(rumbleCycle.begin(), rumbleCycle.end(), val);
@@ -163,7 +163,6 @@ void RLDisasters::OnMatchStarted(std::string)
     cvarManager->log("RLDisasters: kickoff started");
 
     if (growingBallOn) GrowBall();
-
     if (chaosSpeedOn) ApplyChaosSpeed();
 
     if (persistentRumbleOn) {
@@ -193,7 +192,7 @@ void RLDisasters::OnGoalScored(std::string)
 
     if (persistentRumbleOn) {
         desiredRumbleIndex = (desiredRumbleIndex + 1) % (int)rumbleCycle.size();
-        cvarManager->log("RLDisasters: goal scored — cycling rumble to " + rumbleCycle[desiredRumbleIndex]);
+        cvarManager->log("RLDisasters: goal scored — next rumble would be " + rumbleCycle[desiredRumbleIndex]);
     }
 }
 
@@ -206,7 +205,8 @@ void RLDisasters::OnTick(std::string)
     lastPhysicsFrame = frame;
 
     if (persistentRumbleOn) {
-        ForceDesiredRumble();
+        AutoUsePickup();  // instantly uses any pickup you're holding
+        TickRumbleTracking(); // logs changes
     }
 }
 
@@ -235,7 +235,7 @@ void RLDisasters::GrowBall()
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Disaster: Persistent Rumble – forcing the pickup type
+//  Disaster: Persistent Rumble – Auto‑use and logging
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::TickRumbleTracking()
 {
@@ -254,7 +254,7 @@ void RLDisasters::TickRumbleTracking()
     }
 }
 
-void RLDisasters::ForceDesiredRumble()
+void RLDisasters::AutoUsePickup()
 {
     CarWrapper car = gameWrapper->GetLocalCar();
     if (car.IsNull()) return;
@@ -262,14 +262,9 @@ void RLDisasters::ForceDesiredRumble()
     auto pickup = car.GetAttachedPickup();
     if (pickup.IsNull()) return;
 
-    std::string currentName = pickup.GetPickupName().ToString();
-    std::string desiredName = rumbleCycle[desiredRumbleIndex];
-
-    if (currentName == desiredName) return;
-
-    // Set the name by constructing a temporary UnrealStringWrapper
-    pickup.GetPickupName() = UnrealStringWrapper(desiredName);
-    cvarManager->log("RLDisasters: forced rumble from \"" + currentName + "\" to \"" + desiredName + "\"");
+    // Immediately activate the powerup (use it)
+    pickup.PickupStart();
+    cvarManager->log("RLDisasters: auto‑used pickup: " + pickup.GetPickupName().ToString());
 }
 
 // ════════════════════════════════════════════════════════════════════
