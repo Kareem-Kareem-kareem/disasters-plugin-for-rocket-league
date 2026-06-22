@@ -6,7 +6,6 @@
 #include "bakkesmod/wrappers/engine/unrealstringwrapper.h"
 #include "bakkesmod/wrappers/gameobject/rumblecomponent/RumblePickupComponentWrapper.h"
 #include <algorithm>
-#include <unordered_map>
 
 // pluginType 0 = no mode restriction. Growing Ball / Low Gravity Goals
 // only DO anything when you are the host: Freeplay, Custom Training, or
