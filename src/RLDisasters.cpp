@@ -7,26 +7,6 @@
 #include "bakkesmod/wrappers/gameobject/rumblecomponent/RumblePickupComponentWrapper.h"
 #include <algorithm>
 
-// pluginType 0 = no mode restriction. Growing Ball / Low Gravity Goals
-// only DO anything when you are the host: Freeplay, Custom Training, or
-// a BakkesMod LAN match started with "host".
-//
-// Persistent Rumble: real rumble items only exist when the match itself
-// is hosted with the RUMBLE MUTATOR turned on (selected in the match
-// setup screen, same as picking any other mutator). This is confirmed by
-// a real published plugin ("Custom Rumble" on bakkesplugins.com, "Only
-// works in LAN matches... Must be used with the default rumble mutator").
-// The sv_freeplay_rumble_enable_* cvars used in an earlier version of
-// this plugin were wrong — those only affect a separate Freeplay-only
-// Rumble TRAINING mode, unrelated to LAN matches, which is why they did
-// nothing for LAN testing. With Rumble mutator on, the game spawns real
-// pickup items on its own; this plugin detects via CarWrapper's attached
-// pickup (the same approach used by a real, multiplayer-tested plugin,
-// ZpeedTube/rumble-recharge on GitHub) when you have no pickup, and once
-// you pick one up it tracks that you're holding something. There is no
-// SDK function to spawn a brand-new pickup or force a specific ability
-// from nothing — every wrapper class only wraps objects the game itself
-// already created.
 BAKKESMOD_PLUGIN(RLDisasters, "Rocket League Disasters", "1.0", 0)
 
 // ════════════════════════════════════════════════════════════════════
@@ -66,9 +46,6 @@ void RLDisasters::onLoad()
             }
         });
 
-    // SetGameSpeed confirmed real in full ServerWrapper.h read —
-    // GETSETH(float, GameSpeed) macro generates both getter and setter.
-    // A random speed is picked each goal: floaty slow or frantic fast.
     cvarManager->registerCvar("disasters_chaosSpeed", "0", "Game speed randomizes each goal (slow/normal/fast)", true, true, 0, true, 1)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             chaosSpeedOn = cvar.getBoolValue();
@@ -87,7 +64,6 @@ void RLDisasters::onLoad()
             gravityStepPerGoal = cvar.getFloatValue();
         });
 
-    // ─── NEW: cvar to set the desired rumble type ───
     cvarManager->registerCvar("disasters_rumbleType", "freeze", "Rumble powerup to force (freeze, spikes, boot, etc.)", true)
         .addOnValueChanged([this](std::string, CVarWrapper cvar) {
             std::string val = cvar.getStringValue();
@@ -108,9 +84,6 @@ void RLDisasters::onLoad()
         ResetAll();
     }, "Turns off every RL Disasters effect and resets state", PERMISSION_ALL);
 
-    // DIAGNOSTIC: jumps the ball to an unmistakable 4x size instantly,
-    // bypassing goals/timers entirely. Confirmed working — you've already
-    // verified the ball visibly grows when this runs.
     cvarManager->registerNotifier("disasters_testballsize", [this](std::vector<std::string>) {
         if (!gameWrapper->IsInGame()) {
             cvarManager->log("RLDisasters TEST: not in game, aborting");
@@ -130,12 +103,6 @@ void RLDisasters::onLoad()
         cvarManager->log("RLDisasters TEST: called SetBallScale(4.0) — look at the ball NOW");
     }, "DIAGNOSTIC: forces ball to 4x scale instantly", PERMISSION_ALL);
 
-    // DIAGNOSTIC: reports whether your car is currently holding a rumble
-    // pickup right now, using the same CarWrapper::GetAttachedPickup()
-    // call confirmed working in a real, multiplayer-tested plugin
-    // (ZpeedTube/rumble-recharge). REQUIRES the Rumble mutator to be on
-    // when you host the match — without it the game never spawns any
-    // pickups to detect in the first place.
     cvarManager->registerNotifier("disasters_checkpickup", [this](std::vector<std::string>) {
         if (!gameWrapper->IsInGame()) {
             cvarManager->log("RLDisasters TEST: not in game, aborting");
@@ -175,9 +142,6 @@ void RLDisasters::HookEvents()
     gameWrapper->HookEvent("Function TAGame.Ball_TA.Explode",
         [this](std::string e) { OnGoalScored(e); });
 
-    // Fires every physics tick (per car) while in a match — the
-    // documented, game-thread-safe hook real plugins use for continuous
-    // logic. Used here to poll rumble-pickup status every tick.
     gameWrapper->HookEvent("Function TAGame.Car_TA.SetVehicleInput",
         [this](std::string e) { OnTick(e); });
 }
@@ -198,21 +162,12 @@ void RLDisasters::OnMatchStarted(std::string)
 
     cvarManager->log("RLDisasters: kickoff started");
 
-    // Growing Ball — apply scale to the new ball that just spawned for
-    // this kickoff. This is the right moment: the ball exists, is fresh,
-    // and hasn't been hit yet. Much more reliable than trying to scale it
-    // right at the goal explosion moment.
     if (growingBallOn) GrowBall();
 
-    // Chaos Speed — change speed at the start of each new kickoff so
-    // players feel it immediately when play resumes.
     if (chaosSpeedOn) ApplyChaosSpeed();
 
-    // Persistent Rumble — log the current rumble type at kickoff start
-    // (including the very first kickoff of the match) and re-read the
-    // car's attached pickup to keep tracking state fresh.
     if (persistentRumbleOn) {
-        lastTickHadPickup = false; // force a fresh state read next tick
+        lastTickHadPickup = false;
         CarWrapper car = gameWrapper->GetLocalCar();
         if (!car.IsNull()) {
             auto pickup = car.GetAttachedPickup();
@@ -234,34 +189,24 @@ void RLDisasters::OnGoalScored(std::string)
         + " chaosSpeed=" + std::to_string(chaosSpeedOn)
         + " rumble=" + std::to_string(persistentRumbleOn));
 
-    // Low Gravity Goals — tracked per goal scored, not per kickoff.
     if (lowGravityGoalsOn) ApplyLowGravityGoals();
 
-    // ─── NEW: cycle to the next rumble powerup on goal ───
     if (persistentRumbleOn) {
         desiredRumbleIndex = (desiredRumbleIndex + 1) % (int)rumbleCycle.size();
         cvarManager->log("RLDisasters: goal scored — cycling rumble to " + rumbleCycle[desiredRumbleIndex]);
     }
-
-    // NOTE: GrowBall and ChaosSpeed now fire in OnMatchStarted (kickoff)
-    // instead of here — that's when the new ball exists and when the speed
-    // change is most impactful. Goal-scoring is just the trigger that
-    // increments the counter; the visual effect happens at the kickoff.
 }
 
 void RLDisasters::OnTick(std::string)
 {
     if (!gameWrapper->IsInGame()) return;
 
-    // Dedupe multiple cars firing the same physics tick.
     int frame = gameWrapper->GetEngine().GetPhysicsFrame();
     if (frame == lastPhysicsFrame) return;
     lastPhysicsFrame = frame;
 
-    // ─── MODIFIED: force rumble instead of just logging ───
     if (persistentRumbleOn) {
-        ForceDesiredRumble();   // changes your pickup to the desired type every tick
-        // TickRumbleTracking(); // (optional – keep this if you want the old log messages too)
+        ForceDesiredRumble();
     }
 }
 
@@ -290,14 +235,7 @@ void RLDisasters::GrowBall()
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  Disaster: Persistent Rumble
-//  Requires the Rumble mutator to be enabled when hosting the match —
-//  that's what makes the game spawn real pickup items at all. This
-//  plugin doesn't (and per the SDK, can't) create or force a specific
-//  ability; it tracks via CarWrapper::GetAttachedPickup() whether you're
-//  currently holding one, and logs when that changes, using the same
-//  approach confirmed working in real multiplayer by the published
-//  ZpeedTube/rumble-recharge plugin.
+//  Disaster: Persistent Rumble – forcing the pickup type
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::TickRumbleTracking()
 {
@@ -316,7 +254,6 @@ void RLDisasters::TickRumbleTracking()
     }
 }
 
-// ─── NEW: force the pickup to be the desired rumble type ───
 void RLDisasters::ForceDesiredRumble()
 {
     CarWrapper car = gameWrapper->GetLocalCar();
@@ -330,17 +267,13 @@ void RLDisasters::ForceDesiredRumble()
 
     if (currentName == desiredName) return;
 
-    // Assign the new name directly via operator=
-    pickup.GetPickupName() = desiredName;
+    // Set the name by constructing a temporary UnrealStringWrapper
+    pickup.GetPickupName() = UnrealStringWrapper(desiredName);
     cvarManager->log("RLDisasters: forced rumble from \"" + currentName + "\" to \"" + desiredName + "\"");
 }
 
 // ════════════════════════════════════════════════════════════════════
 //  Disaster: Low Gravity Goals
-//  Gravity is negative (default -650). "Weaker" means closer to zero,
-//  i.e. less downward pull, i.e. floatier. Each goal moves gravity
-//  toward zero by gravityStepPerGoal (adjustable, default 100), capped
-//  at -150 so it never flips sign or goes to true zero-g.
 // ════════════════════════════════════════════════════════════════════
 void RLDisasters::ApplyLowGravityGoals()
 {
