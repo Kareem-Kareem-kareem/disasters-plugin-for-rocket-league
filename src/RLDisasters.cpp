@@ -331,8 +331,8 @@ void RLDisasters::ForceDesiredRumble()
 
     if (currentName == desiredName) return; // already correct
 
-    // Set the pickup type by name (assumes SetPickupName exists)
-    pickup.SetPickupName(desiredName);
+    // Set the pickup type by modifying the underlying string
+    pickup.GetPickupName().SetString(desiredName);
     cvarManager->log("RLDisasters: forced rumble from \"" + currentName + "\" to \"" + desiredName + "\"");
 }
 
