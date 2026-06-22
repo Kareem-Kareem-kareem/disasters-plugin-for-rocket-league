@@ -4,7 +4,7 @@
 #include "bakkesmod/wrappers/gameobject/ballwrapper.h"
 #include "bakkesmod/wrappers/gameevent/serverwrapper.h"
 #include "bakkesmod/wrappers/engine/unrealstringwrapper.h"
-#include "bakkesmod/wrappers/GameObject/RumbleComponent/RumblePickup.h"
+#include "bakkesmod/wrappers/gameobject/rumblecomponent/RumblePickupComponentWrapper.h"
 #include <algorithm>
 #include <unordered_map>
 
